@@ -1,4 +1,4 @@
-import type { Bot, BotDetail, Message } from "./types.js";
+import type { Bot, BotDetail, Message, Room } from "./types.js";
 
 const secret = (): string | null => {
   try {
@@ -49,11 +49,27 @@ export const api = {
     request<Bot>(`/api/bots/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   deleteBot: (id: string) =>
     request<{ ok: boolean }>(`/api/bots/${id}`, { method: "DELETE" }),
+  rooms: () => request<Room[]>("/api/rooms"),
+  room: (id: string) => request<Room>(`/api/rooms/${id}`),
+  createRoom: (input: {
+    name: string;
+    kind: "solo" | "party";
+    goal?: string | null;
+    stepMode?: boolean;
+    ceilings?: Record<string, number>;
+    participants: { botId: string; noisiness?: number; cooldownTurns?: number }[];
+  }) => request<Room>("/api/rooms", { method: "POST", body: JSON.stringify(input) }),
+  deleteRoom: (id: string) =>
+    request<{ ok: boolean }>(`/api/rooms/${id}`, { method: "DELETE" }),
+  resume: (id: string) =>
+    request<{ ok: boolean }>(`/api/rooms/${id}/resume`, { method: "POST" }),
+  advance: (id: string) =>
+    request<{ ok: boolean }>(`/api/rooms/${id}/step`, { method: "POST" }),
   messages: (roomId: string) => request<Message[]>(`/api/rooms/${roomId}/messages`),
-  send: (roomId: string, text: string, botId: string) =>
+  send: (roomId: string, text: string, botId?: string) =>
     request<{ ok: boolean }>(`/api/rooms/${roomId}/messages`, {
       method: "POST",
-      body: JSON.stringify({ text, botId }),
+      body: JSON.stringify(botId === undefined ? { text } : { text, botId }),
     }),
   decidePermission: (id: string, allowed: boolean, always: boolean) =>
     request<{ ok: boolean }>(`/api/permissions/${id}`, {

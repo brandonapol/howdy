@@ -34,17 +34,59 @@ export type Usage = {
   readonly cacheCreationTokens: number;
 };
 
+export type Ceilings = {
+  readonly maxTurns: number;
+  readonly maxTokens: number;
+  readonly maxWallClockMs: number;
+  readonly maxToolCallsPerTurn: number;
+};
+
+export type RoomStatus =
+  | { readonly kind: "idle" }
+  | { readonly kind: "awaitingTurn"; readonly speaker: string }
+  | { readonly kind: "running"; readonly speaker: string }
+  | { readonly kind: "halted"; readonly reason: HaltReason };
+
+export type HaltReason =
+  | { readonly kind: "manual" }
+  | { readonly kind: "budget"; readonly breach: { readonly kind: string; readonly used: number; readonly ceiling: number } }
+  | { readonly kind: "degeneracy"; readonly detector: string; readonly detail: string }
+  | { readonly kind: "error"; readonly detail: string };
+
+export type Room = {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: "solo" | "party";
+  readonly goal: string | null;
+  readonly stepMode: boolean;
+  readonly ceilings: Ceilings;
+  readonly participants: readonly string[];
+  readonly status: RoomStatus;
+  readonly budget: {
+    readonly turnsUsed: number;
+    readonly tokensUsed: number;
+    readonly ceilings: Ceilings;
+  };
+};
+
 export type HowdyEvent =
   | { readonly kind: "message"; readonly roomId: string; readonly message: Message }
   | { readonly kind: "chunk"; readonly roomId: string; readonly botId: string; readonly text: string }
   | { readonly kind: "toolUse"; readonly roomId: string; readonly botId: string; readonly tool: string; readonly summary: string }
   | { readonly kind: "turnStarted"; readonly roomId: string; readonly botId: string }
   | { readonly kind: "turnFinished"; readonly roomId: string; readonly botId: string; readonly usage: Usage; readonly costUsd: number }
-  | { readonly kind: "halted"; readonly roomId: string; readonly reason: { readonly kind: string } }
+  | { readonly kind: "halted"; readonly roomId: string; readonly reason: HaltReason }
   | { readonly kind: "announce"; readonly roomId: string; readonly text: string }
   | { readonly kind: "queueDepth"; readonly depth: number }
   | { readonly kind: "spend"; readonly tokensToday: number; readonly ceiling: number }
-  | { readonly kind: "roomStatus"; readonly roomId: string; readonly status: unknown }
+  | {
+      readonly kind: "roomStatus";
+      readonly roomId: string;
+      readonly status: RoomStatus;
+      readonly turnsUsed: number;
+      readonly tokensUsed: number;
+      readonly ceilings: { readonly maxTurns: number; readonly maxTokens: number };
+    }
   | { readonly kind: "permissionRequest"; readonly id: string; readonly roomId: string; readonly botId: string; readonly tool: string; readonly detail: string }
   | { readonly kind: "permissionResolved"; readonly id: string; readonly allowed: boolean };
 

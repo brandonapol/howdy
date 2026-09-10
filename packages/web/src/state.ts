@@ -1,4 +1,4 @@
-import type { Envelope, HowdyEvent, Message } from "./types.js";
+import type { Envelope, HowdyEvent, Message, RoomStatus } from "./types.js";
 
 export type Notice = {
   readonly id: string;
@@ -12,6 +12,11 @@ export type RoomView = {
   readonly streaming: Readonly<Record<string, string>>;
   readonly activeBot: string | null;
   readonly tools: readonly string[];
+  readonly status: RoomStatus;
+  readonly turnsUsed: number;
+  readonly tokensUsed: number;
+  readonly maxTurns: number;
+  readonly maxTokens: number;
 };
 
 export type PermissionRequest = {
@@ -37,6 +42,11 @@ export const emptyRoom: RoomView = {
   streaming: {},
   activeBot: null,
   tools: [],
+  status: { kind: "idle" },
+  turnsUsed: 0,
+  tokensUsed: 0,
+  maxTurns: 0,
+  maxTokens: 0,
 };
 
 export const initialState: UiState = {
@@ -129,7 +139,7 @@ export const applyEvent = (state: UiState, event: HowdyEvent): UiState => {
       const halted = withRoom(
         { ...state, permissions: state.permissions.filter((p) => p.roomId !== event.roomId) },
         event.roomId,
-        { ...room, activeBot: null, streaming: {} },
+        { ...room, activeBot: null, streaming: {}, status: { kind: "halted", reason: event.reason } },
       );
       return addNotice(halted, {
         id: `halt-${state.lastEventId}`,
@@ -170,6 +180,18 @@ export const applyEvent = (state: UiState, event: HowdyEvent): UiState => {
         permissions: state.permissions.filter((p) => p.id !== event.id),
       };
 
+    case "roomStatus": {
+      const room = roomOf(state, event.roomId);
+      return withRoom(state, event.roomId, {
+        ...room,
+        status: event.status,
+        turnsUsed: event.turnsUsed,
+        tokensUsed: event.tokensUsed,
+        maxTurns: event.ceilings.maxTurns,
+        maxTokens: event.ceilings.maxTokens,
+      });
+    }
+
     case "queueDepth":
       return { ...state, queueDepth: event.depth };
 
@@ -190,8 +212,9 @@ export const seedRoom = (
   state: UiState,
   roomId: string,
   messages: readonly Message[],
+  meta?: Partial<RoomView>,
 ): UiState =>
-  withRoom(state, roomId, { ...roomOf(state, roomId), messages });
+  withRoom(state, roomId, { ...roomOf(state, roomId), messages, ...meta });
 
 const omit = (
   record: Readonly<Record<string, string>>,

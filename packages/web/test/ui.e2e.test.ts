@@ -338,3 +338,211 @@ test("the phone layout keeps everything reachable", async (t) => {
   );
   assert.equal(overflows, false, "the phone layout must not scroll sideways");
 });
+
+const twoBots = async (h: Howdy) => {
+  await h.post("/api/bots", { name: "Sre" });
+  await h.post("/api/bots", { name: "Dev" });
+};
+
+const PARTY_LINES = [
+  "Sync wave zero holds both the namespace and a job that assumes it exists.",
+  "Helm templates a timestamp into the checksum, so every diff shows drift.",
+  "Kubelet reserve was never retuned after we doubled pod density.",
+  "The autoscaler reads a metric the adapter caches past our scrape interval.",
+  "Pull secrets rotate weekly but the service account patch runs monthly.",
+  "Terraform drifted when a security group was widened by hand.",
+];
+
+const partyScript = () => {
+  let n = 0;
+  return async (input: Parameters<Parameters<Howdy["setScript"]>[0]>[0]) => {
+    const text = PARTY_LINES[n % PARTY_LINES.length] ?? "another point";
+    n += 1;
+    input.onText?.(text);
+    await sleep(60, input.signal);
+    return {
+      text,
+      toolCalls: [],
+      usage: usage(300, 150),
+      costUsd: 0.001,
+      sessionId: null,
+      isError: false,
+      detail: null,
+    };
+  };
+};
+
+test("a party can be assembled in the browser and shows up in the sidebar", async (t) => {
+  const h = await stage();
+  t.after(() => h.cleanup());
+  await twoBots(h);
+  const app = await openApp(browser, h.url);
+  t.after(() => app.close());
+  await app.page.waitForSelector(".dot.open");
+
+  await app.page.locator("button:has-text('New party')").click();
+  await app.page.waitForSelector(".prompt.wide");
+
+  const start = app.page.locator(".prompt button:has-text('Start')");
+  assert.equal(await start.isDisabled(), true, "cannot start a party with nobody in it");
+
+  await app.page.locator("#party-name").fill("deploy post-mortem");
+  await app.page.locator("#party-goal").fill("work out why the sync wedged");
+  for (const box of await app.page.locator(".cast-row .pick input").all()) await box.check();
+  await app.page.locator(".row3 input").first().fill("4");
+
+  assert.equal(await start.isDisabled(), false);
+  await start.click();
+  await app.page.waitForSelector(".prompt.wide", { state: "detached", timeout: 8000 });
+
+  await app.page.waitForSelector(".roombar", { timeout: 8000 });
+  assert.match((await app.page.locator(".roombar .goal").textContent()) ?? "", /sync wedged/);
+  assert.match(
+    (await app.page.locator(".bot .name").last().textContent()) ?? "",
+    /deploy post-mortem/,
+  );
+  assert.deepEqual(app.errors, []);
+});
+
+test("bots take turns in the browser and the room meters fill up", async (t) => {
+  const h = await stage();
+  t.after(() => h.cleanup());
+  const bots = await Promise.all([
+    h.post<{ id: string }>("/api/bots", { name: "Sre" }),
+    h.post<{ id: string }>("/api/bots", { name: "Dev" }),
+  ]);
+  const room = await h.post<{ id: string }>("/api/rooms", {
+    name: "the party",
+    kind: "party",
+    ceilings: { maxTurns: 5 },
+    participants: bots.map((b) => ({ botId: b.id, noisiness: 1, cooldownTurns: 0 })),
+  });
+
+  const app = await openApp(browser, h.url);
+  t.after(() => app.close());
+  await app.page.waitForSelector(".dot.open");
+  await app.page.locator(`.bot:has-text("the party")`).click();
+  await app.page.waitForSelector(".roombar");
+
+  h.setScript(partyScript());
+  await app.page.locator("textarea").fill("why is the deploy stuck?");
+  await app.page.locator("textarea").press("Enter");
+
+  await app.page.waitForFunction(
+    () => document.querySelectorAll(".msg.bot").length >= 3,
+    undefined,
+    { timeout: 20000 },
+  );
+  await app.page.waitForSelector(".roombar .state.halted", { timeout: 20000 });
+
+  const turns = (await app.page.locator(".roombar .meter .label").first().textContent()) ?? "";
+  assert.match(turns, /turns/);
+  assert.match(turns, /5 \/ 5/, `expected the turn meter to be full, saw "${turns}"`);
+  assert.match((await app.page.locator(".roombar .state").textContent()) ?? "", /ceiling/);
+  assert.ok(await app.page.locator("button:has-text('Resume')").isVisible());
+
+  void room;
+  assert.deepEqual(app.errors, []);
+});
+
+test("step mode releases exactly one turn per click", async (t) => {
+  const h = await stage();
+  t.after(() => h.cleanup());
+  const bots = await Promise.all([
+    h.post<{ id: string }>("/api/bots", { name: "Sre" }),
+    h.post<{ id: string }>("/api/bots", { name: "Dev" }),
+  ]);
+  await h.post("/api/rooms", {
+    name: "slow party",
+    kind: "party",
+    stepMode: true,
+    ceilings: { maxTurns: 20 },
+    participants: bots.map((b) => ({ botId: b.id, noisiness: 1, cooldownTurns: 0 })),
+  });
+
+  const app = await openApp(browser, h.url);
+  t.after(() => app.close());
+  await app.page.waitForSelector(".dot.open");
+  await app.page.locator(`.bot:has-text("slow party")`).click();
+  await app.page.waitForSelector(".roombar");
+
+  h.setScript(partyScript());
+  await app.page.locator("textarea").fill("go");
+  await app.page.locator("textarea").press("Enter");
+
+  await app.page.waitForSelector("button:has-text('Next turn')", { timeout: 10000 });
+  assert.equal(await app.page.locator(".msg.bot").count(), 0, "nothing runs unasked");
+
+  await app.page.locator("button:has-text('Next turn')").click();
+  await app.page.waitForFunction(
+    () => document.querySelectorAll(".msg.bot").length === 1,
+    undefined,
+    { timeout: 10000 },
+  );
+  await sleep(700);
+  assert.equal(await app.page.locator(".msg.bot").count(), 1, "exactly one turn per click");
+});
+
+test("halting a party from the room bar stops it and offers a way back", async (t) => {
+  const h = await stage();
+  t.after(() => h.cleanup());
+  const bots = await Promise.all([
+    h.post<{ id: string }>("/api/bots", { name: "Sre" }),
+    h.post<{ id: string }>("/api/bots", { name: "Dev" }),
+  ]);
+  await h.post("/api/rooms", {
+    name: "runaway",
+    kind: "party",
+    ceilings: { maxTurns: 100 },
+    participants: bots.map((b) => ({ botId: b.id, noisiness: 1, cooldownTurns: 0 })),
+  });
+
+  const app = await openApp(browser, h.url);
+  t.after(() => app.close());
+  await app.page.waitForSelector(".dot.open");
+  await app.page.locator(`.bot:has-text("runaway")`).click();
+
+  h.setScript(async (input) => {
+    input.onText?.("thinking at length");
+    await sleep(20_000, input.signal);
+    throw new Error("unreachable");
+  });
+
+  await app.page.locator("textarea").fill("start");
+  await app.page.locator("textarea").press("Enter");
+  await app.page.waitForSelector(".cursor", { timeout: 10000 });
+
+  await app.page.locator("button.halt").click();
+  await app.page.waitForSelector(".roombar .state.halted", { timeout: 10000 });
+  assert.match((await app.page.locator(".roombar .state").textContent()) ?? "", /halted by you/);
+  assert.equal(await app.page.locator(".cursor").count(), 0);
+  assert.ok(await app.page.locator("button:has-text('Resume')").isVisible());
+});
+
+test("each bot keeps its own conversation", async (t) => {
+  const h = await stage();
+  t.after(() => h.cleanup());
+  await twoBots(h);
+  const app = await openApp(browser, h.url);
+  t.after(() => app.close());
+  await app.page.waitForSelector(".dot.open");
+
+  h.setScript(replies("this is Dev speaking"));
+  await app.page.locator(".bot:has-text('Dev')").click();
+  await app.page.locator("textarea").fill("hello Dev");
+  await app.page.locator("textarea").press("Enter");
+  await app.page.waitForFunction(
+    () => (document.body.textContent ?? "").includes("this is Dev speaking"),
+    undefined,
+    { timeout: 10000 },
+  );
+
+  await app.page.locator(".bot:has-text('Sre')").click();
+  await sleep(500);
+  assert.equal(
+    (await app.page.locator(".transcript").textContent())?.includes("hello Dev"),
+    false,
+    "one bot's conversation must not leak into another's",
+  );
+  assert.equal(await app.page.locator(".msg").count(), 0);
+});

@@ -6,7 +6,14 @@ export type HowdyEvent =
   | { readonly kind: "toolUse"; readonly roomId: string; readonly botId: string; readonly tool: string; readonly summary: string }
   | { readonly kind: "turnStarted"; readonly roomId: string; readonly botId: string }
   | { readonly kind: "turnFinished"; readonly roomId: string; readonly botId: string; readonly usage: Usage; readonly costUsd: number }
-  | { readonly kind: "roomStatus"; readonly roomId: string; readonly status: RoomStatus }
+  | {
+      readonly kind: "roomStatus";
+      readonly roomId: string;
+      readonly status: RoomStatus;
+      readonly turnsUsed: number;
+      readonly tokensUsed: number;
+      readonly ceilings: { readonly maxTurns: number; readonly maxTokens: number };
+    }
   | { readonly kind: "halted"; readonly roomId: string; readonly reason: HaltReason }
   | { readonly kind: "announce"; readonly roomId: string; readonly text: string }
   | { readonly kind: "queueDepth"; readonly depth: number }

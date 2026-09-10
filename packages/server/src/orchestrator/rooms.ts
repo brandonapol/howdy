@@ -246,7 +246,17 @@ export const createOrchestrator = (deps: Deps): Orchestrator => {
     const [next, effects] = step(current, event);
     states.set(roomId, next);
     persist(next);
-    bus.publish({ kind: "roomStatus", roomId, status: next.status });
+    bus.publish({
+      kind: "roomStatus",
+      roomId,
+      status: next.status,
+      turnsUsed: next.budget.turnsUsed,
+      tokensUsed: next.budget.tokensUsed,
+      ceilings: {
+        maxTurns: next.budget.ceilings.maxTurns,
+        maxTokens: next.budget.ceilings.maxTokens,
+      },
+    });
     for (const effect of effects) execute(roomId, effect);
   };
 

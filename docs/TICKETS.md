@@ -204,7 +204,7 @@ deps: H-17
 
 ## M4 — The party
 
-### H-20 · Orchestrator wiring — `todo`
+### H-20 · Orchestrator wiring — `done`
 `packages/server/src/orchestrator/`. Binds the pure `step()` to real effects:
 enqueue turn, persist message, emit SSE, halt. The impure shell stays thin — if
 logic creeps in here instead of `core`, it stops being testable.
@@ -212,7 +212,7 @@ logic creeps in here instead of `core`, it stops being testable.
 **Done when:** a two-bot room runs to a natural stop with no human input.
 deps: H-4, H-5, H-10
 
-### H-21 · Killswitch — `todo`
+### H-21 · Killswitch — `done`
 Per-room halt and global panic. Aborts in-flight turns, drains the queue, marks
 the room, posts a system message. Big red button, `Esc Esc` shortcut, and a
 `POST /api/panic` you can `curl` from anywhere on the LAN.
@@ -220,14 +220,14 @@ the room, posts a system message. Big red button, `Esc Esc` shortcut, and a
 **Done when:** a running party stops within 2s, subprocess included, measured.
 deps: H-20
 
-### H-22 · Budget meter UI — `todo` (daily meter shipped in H-11; per-room ceilings outstanding)
+### H-22 · Budget meter UI — `done`
 Live tokens/turns/wall-clock against ceilings, per room. Goes amber at 75%,
 red at 90%. Shows which ceiling stopped a halted party.
 
 **Done when:** the meter matches the SQLite `turns` totals exactly.
 deps: H-11, H-20
 
-### H-23 · Party controls — `todo`
+### H-23 · Party controls — `done`
 Room composer: pick participants, set per-bot noisiness, ceilings, a topic seed,
 and step mode. Save as reusable presets.
 
@@ -241,7 +241,7 @@ The thing you actually read when a party goes weird.
 **Done when:** every halt reason from H-4 renders with its trigger.
 deps: H-22
 
-### H-31 · Global spend governor — `todo`
+### H-31 · Global spend governor — `done`
 Daily and weekly token ceilings across **every** room, routine and bot, checked
 *before* a turn is dispatched rather than after it lands. Rolling windows in
 SQLite, a dedicated UI meter, and a hard stop that no room can talk its way past.
