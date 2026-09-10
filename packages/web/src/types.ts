@@ -69,6 +69,24 @@ export type Room = {
   };
 };
 
+export type Schedule =
+  | { readonly kind: "interval"; readonly minutes: number }
+  | { readonly kind: "daily"; readonly hour: number; readonly minute: number }
+  | { readonly kind: "weekly"; readonly weekday: number; readonly hour: number; readonly minute: number };
+
+export type Routine = {
+  readonly id: string;
+  readonly name: string;
+  readonly roomId: string;
+  readonly prompt: string;
+  readonly schedule: Schedule;
+  readonly description: string;
+  readonly enabled: boolean;
+  readonly lastRunAt: number | null;
+  readonly nextRunAt: number | null;
+  readonly lastStatus: string | null;
+};
+
 export type TimelineEntry = {
   readonly kind: "turn" | "note";
   readonly botId?: string;
@@ -101,6 +119,12 @@ export type HowdyEvent =
     }
   | { readonly kind: "permissionRequest"; readonly id: string; readonly roomId: string; readonly botId: string; readonly tool: string; readonly detail: string }
   | { readonly kind: "permissionResolved"; readonly id: string; readonly allowed: boolean }
+  | {
+      readonly kind: "routineFired";
+      readonly routineId: string;
+      readonly roomId: string;
+      readonly name: string;
+    }
   | {
       readonly kind: "remembered";
       readonly roomId: string;

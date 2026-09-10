@@ -15,6 +15,7 @@ import type { TurnOutcome } from "../agent/outcome.js";
 import { createPermissionBroker } from "../agent/permissions.js";
 import type { PermissionBroker } from "../agent/permissions.js";
 import { createOrchestrator } from "../orchestrator/rooms.js";
+import { createRoutines } from "../orchestrator/routines.js";
 import type { Judge } from "../agent/judge.js";
 
 export type RunTurn = (input: RunTurnInput) => Promise<TurnOutcome>;
@@ -28,6 +29,7 @@ export type AppDeps = {
   readonly runTurn?: RunTurn;
   readonly broker?: PermissionBroker;
   readonly judge?: Judge;
+  readonly onShutdown?: (dispose: () => void) => void;
 };
 
 type MessageRow = {
@@ -87,6 +89,9 @@ export const createApp = (deps: AppDeps): Hono => {
     config, db, bus, bots, queue, broker, runTurn,
     ...(deps.judge === undefined ? {} : { judge: deps.judge }),
   });
+  const routines = createRoutines({ config, db, bus, rooms: orchestrator });
+  routines.start();
+  deps.onShutdown?.(() => routines.stop());
   const app = new Hono();
 
   app.use("/api/*", async (c, next) => {
@@ -299,6 +304,46 @@ export const createApp = (deps: AppDeps): Hono => {
     orchestrator.advance(c.req.param("id"));
     return c.json({ ok: true });
   });
+
+  app.get("/api/routines", (c) => c.json(routines.list()));
+
+  app.post("/api/routines", async (c) => {
+    const body = (await c.req.json()) as Record<string, unknown>;
+    const name = typeof body["name"] === "string" ? body["name"].trim() : "";
+    const roomId = typeof body["roomId"] === "string" ? body["roomId"] : "";
+    const prompt = typeof body["prompt"] === "string" ? body["prompt"].trim() : "";
+    if (name === "" || prompt === "") return c.json({ error: "name and prompt are required" }, 400);
+    if (orchestrator.get(roomId) === null) return c.json({ error: "no such room" }, 400);
+    const schedule = body["schedule"];
+    if (typeof schedule !== "object" || schedule === null) {
+      return c.json({ error: "schedule is required" }, 400);
+    }
+    return c.json(
+      routines.create({ name, roomId, prompt, schedule: schedule as never }),
+      201,
+    );
+  });
+
+  app.patch("/api/routines/:id", async (c) => {
+    const body = (await c.req.json()) as Record<string, unknown>;
+    const updated = routines.update(c.req.param("id"), body as never);
+    return updated === null ? c.json({ error: "not found" }, 404) : c.json(updated);
+  });
+
+  app.delete("/api/routines/:id", (c) =>
+    routines.remove(c.req.param("id"))
+      ? c.json({ ok: true })
+      : c.json({ error: "not found" }, 404),
+  );
+
+  app.post("/api/routines/:id/run", (c) => {
+    const routine = routines.get(c.req.param("id"));
+    if (routine === null) return c.json({ error: "not found" }, 404);
+    const ran = routines.runNow(c.req.param("id"));
+    return c.json({ ok: ran, status: routines.get(c.req.param("id"))?.lastStatus ?? null });
+  });
+
+  app.post("/api/routines/tick", (c) => c.json({ fired: routines.tick() }));
 
   app.get("/api/permissions", (c) => c.json(broker.pending()));
 

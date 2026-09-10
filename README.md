@@ -18,11 +18,12 @@ LAN-only. Runs on an ODROID.
 | M4 The party | orchestrator, killswitch, governors, party UI, handoff, goal completion, timeline — **done** |
 | M5 Ship it | systemd units, install script, backup and restore, ops docs — **done** |
 
-**319 tests green**, including 62 API end-to-end and 17 browser end-to-end. See [`docs/RESEARCH.md`](docs/RESEARCH.md) for how this
-compares to Grok Bot and what the multi-agent literature says.
+**340 tests green**, including 82 API end-to-end and 18 browser end-to-end.
 
-Read [`docs/PLAN.md`](docs/PLAN.md) for the architecture and
-[`docs/TICKETS.md`](docs/TICKETS.md) for the work breakdown.
+Read [`docs/PLAN.md`](docs/PLAN.md) for the architecture,
+[`docs/TICKETS.md`](docs/TICKETS.md) for the work breakdown,
+[`docs/RESEARCH.md`](docs/RESEARCH.md) for how this compares to Grok Bot, and
+[`ops/README.md`](ops/README.md) to put it on an ODROID.
 
 ## Layout
 
@@ -63,6 +64,17 @@ Node 22+. No native dependencies in `core`, on purpose.
 | `HOWDY_SECRET` | unset | if set, required as `x-howdy-secret` on every `/api` call bar health |
 | `HOWDY_TURN_TIMEOUT_MS` | `180000` | per-turn watchdog |
 | `HOWDY_DAILY_TOKEN_CEILING` | `2000000` | refuses new turns once spent |
+
+## Routines
+
+A routine posts a prompt into a room on a schedule — daily, weekly, or every N
+minutes. "Check my open PRs each morning and tell me what needs a decision."
+
+Every firing goes through the same machinery as anything you type: the room's
+ceilings, the permission gate, the detectors. A routine is skipped rather than
+queued when the daily or weekly budget is already spent, so waking up to an
+exhausted account is not a thing that can happen. Intervals have a five-minute
+floor so a routine cannot become a busy loop.
 
 ## Testing
 

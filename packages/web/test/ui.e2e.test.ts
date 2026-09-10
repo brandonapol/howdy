@@ -586,3 +586,61 @@ test("the timeline explains what a party cost and why it stopped", async (t) => 
   await app.page.waitForSelector(".transcript", { timeout: 5000 });
   assert.deepEqual(app.errors, []);
 });
+
+test("a routine can be created, run and paused from the browser", async (t) => {
+  const h = await stage();
+  t.after(() => h.cleanup());
+  const bots = await Promise.all([
+    h.post<{ id: string }>("/api/bots", { name: "Sre" }),
+    h.post<{ id: string }>("/api/bots", { name: "Dev" }),
+  ]);
+  await h.post("/api/rooms", {
+    name: "standup",
+    kind: "party",
+    ceilings: { maxTurns: 2 },
+    participants: bots.map((b) => ({ botId: b.id, noisiness: 1, cooldownTurns: 0 })),
+  });
+
+  const app = await openApp(browser, h.url);
+  t.after(() => app.close());
+  await app.page.waitForSelector(".dot.open");
+
+  await app.page.locator("button:has-text('Routines')").click();
+  await app.page.waitForSelector("#r-name");
+
+  await app.page.locator("#r-name").fill("morning PR sweep");
+  await app.page.locator("#r-prompt").fill("check my open PRs");
+  await app.page.locator("#r-time").fill("08:30");
+  await app.page.locator("button:has-text('Add routine')").click();
+
+  await app.page.waitForSelector(".tl", { timeout: 8000 });
+  const row = (await app.page.locator(".tl tr").first().textContent()) ?? "";
+  assert.match(row, /morning PR sweep/);
+  assert.match(row, /daily at 08:30/);
+  assert.match(row, /next /);
+
+  h.setScript(replies("Two PRs need you."));
+  await app.page.locator("button:has-text('Run')").first().click();
+  await app.page.waitForFunction(
+    () => (document.querySelector(".tl")?.textContent ?? "").includes("ran"),
+    undefined,
+    { timeout: 10000 },
+  );
+
+  await app.page.locator("button:has-text('Pause')").first().click();
+  await app.page.waitForFunction(
+    () => (document.querySelector(".tl")?.textContent ?? "").includes("paused"),
+    undefined,
+    { timeout: 8000 },
+  );
+
+  const rooms = await h.get<{ id: string; name: string }[]>("/api/rooms");
+  const standup = rooms.find((r) => r.name === "standup");
+  assert.ok(standup !== undefined, "the party room should still exist");
+  const messages = await h.get<{ content: string }[]>(`/api/rooms/${standup.id}/messages`);
+  assert.ok(
+    messages.some((m) => m.content === "check my open PRs"),
+    `the routine prompt should have landed in the room, saw: ${messages.map((m) => m.content).join(" | ")}`,
+  );
+  assert.deepEqual(app.errors, []);
+});

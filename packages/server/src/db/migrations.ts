@@ -115,4 +115,19 @@ export const migrations: readonly string[] = [
   `
   ALTER TABLE turns ADD COLUMN message_id TEXT;
   `,
+  `
+  CREATE TABLE routines (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    room_id TEXT NOT NULL,
+    prompt TEXT NOT NULL,
+    schedule TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_run_at INTEGER,
+    next_run_at INTEGER,
+    last_status TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX idx_routines_due ON routines(enabled, next_run_at);
+  `,
 ];

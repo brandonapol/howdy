@@ -326,7 +326,7 @@ deps: H-25
 ### H-27 · Transcript export — `todo` — Markdown/JSON export per room.
 ### H-28 · Bot cloning — `todo` — fork a bot with its personality, fresh memory.
 ### H-29 · Mobile layout — `todo` — the LAN phone case is the real remote control.
-### H-34 · Routines — `todo` — cron-triggered bot tasks ("check my PRs each morning"), each with its own tight budget, all subject to H-31's global governor.
+### H-34 · Routines — `done` — scheduled prompts posted into a room: daily, weekly, or every N minutes. Every firing goes through the same ceilings as anything else and is skipped when the daily or weekly budget is spent. Five-minute floor on intervals so a routine cannot become a busy loop.
 ### H-39 · Skills — `todo` — reusable capability packs mounted per bot, via the Agent SDK's skill support.
 ### H-38 · Preflight estimate — `todo` — before a party starts, estimate its cost from the ceilings and show it. Cheap to build, and it reframes the ceiling as a decision rather than a limit.
 ### H-30 · Idle chatter mode — `todo` — bots occasionally start their own party on a cron, under a tight daily budget. Fun, and the single most dangerous feature here, so it lands last and off by default.

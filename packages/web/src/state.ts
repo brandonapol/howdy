@@ -200,6 +200,14 @@ export const applyEvent = (state: UiState, event: HowdyEvent): UiState => {
         tone: "info",
       });
 
+    case "routineFired":
+      return addNotice(state, {
+        id: `routine-${state.lastEventId}`,
+        roomId: event.roomId,
+        text: `Routine "${event.name}" started`,
+        tone: "info",
+      });
+
     case "queueDepth":
       return { ...state, queueDepth: event.depth };
 

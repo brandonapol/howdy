@@ -24,6 +24,7 @@ export type Config = {
   readonly dailyTokenCeiling: number;
   readonly weeklyTokenCeiling: number;
   readonly goalCheckEvery: number;
+  readonly routineTickMs: number;
   readonly webDist: string | null;
 };
 
@@ -44,6 +45,7 @@ export const loadConfig = (): Config => {
     dailyTokenCeiling: int("HOWDY_DAILY_TOKEN_CEILING", 2_000_000),
     weeklyTokenCeiling: int("HOWDY_WEEKLY_TOKEN_CEILING", 10_000_000),
     goalCheckEvery: int("HOWDY_GOAL_CHECK_EVERY", 2),
+    routineTickMs: int("HOWDY_ROUTINE_TICK_MS", 30_000),
     webDist: webDist === undefined || webDist === "" ? null : resolve(webDist),
   };
 };

@@ -55,6 +55,7 @@ export type Howdy = RunningServer & {
   readonly setJudge: (judge: JudgeStub) => void;
   readonly get: <T>(path: string) => Promise<T>;
   readonly post: <T>(path: string, body?: unknown) => Promise<T>;
+  readonly patch: <T>(path: string, body?: unknown) => Promise<T>;
   readonly cleanup: () => Promise<void>;
   readonly bot: (slug: string) => Bot;
   readonly remember: (slug: string, fact: string, tags?: readonly string[]) => string;
@@ -143,6 +144,8 @@ export const startHowdy = async (
     get: (path) => call(path),
     post: (path, body) =>
       call(path, { method: "POST", body: JSON.stringify(body ?? {}) }),
+    patch: (path, body) =>
+      call(path, { method: "PATCH", body: JSON.stringify(body ?? {}) }),
     cleanup: async () => {
       await server.stop();
       rmSync(root, { recursive: true, force: true });

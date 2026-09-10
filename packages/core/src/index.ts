@@ -7,3 +7,4 @@ export * from "./prompt.js";
 export * from "./bash.js";
 export * from "./paths.js";
 export * from "./memory.js";
+export * from "./schedule.js";

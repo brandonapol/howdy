@@ -39,12 +39,14 @@ export const startServer = async (options: StartOptions = {}): Promise<RunningSe
     onDepthChange: (depth) => bus.publish({ kind: "queueDepth", depth }),
   });
 
+  const disposers: (() => void)[] = [];
   const app = createApp({
     config,
     db,
     bus,
     bots,
     queue,
+    onShutdown: (dispose) => disposers.push(dispose),
     ...(options.runTurn === undefined ? {} : { runTurn: options.runTurn }),
     ...(options.judge === undefined ? {} : { judge: options.judge }),
   });
@@ -66,6 +68,7 @@ export const startServer = async (options: StartOptions = {}): Promise<RunningSe
     config,
     bus,
     stop: async () => {
+      for (const dispose of disposers) dispose();
       queue.abortAll();
       await queue.drain().catch(() => undefined);
       bus.publish({ kind: "shutdown" });

@@ -15,6 +15,7 @@ type Props = {
   readonly onNewBot: () => void;
   readonly onNewParty: () => void;
   readonly onConfigure: () => void;
+  readonly onRoutines: () => void;
 };
 
 const same = (a: Selection | null, b: Selection): boolean =>
@@ -27,7 +28,7 @@ const same = (a: Selection | null, b: Selection): boolean =>
       : false);
 
 export const Sidebar = ({
-  bots, rooms, selection, activeBot, connection, onSelect, onNewBot, onNewParty, onConfigure,
+  bots, rooms, selection, activeBot, connection, onSelect, onNewBot, onNewParty, onConfigure, onRoutines,
 }: Props) => (
   <aside className="sidebar">
     <div className="brand">
@@ -87,6 +88,7 @@ export const Sidebar = ({
       <button onClick={onNewBot}>New bot</button>
       <button onClick={onNewParty} disabled={bots.length < 2}>New party</button>
       <button onClick={onConfigure} disabled={selection?.kind !== "bot"}>Configure</button>
+      <button onClick={onRoutines}>Routines</button>
     </div>
   </aside>
 );

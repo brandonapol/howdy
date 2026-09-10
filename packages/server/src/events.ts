@@ -27,6 +27,12 @@ export type HowdyEvent =
       readonly fact: string;
       readonly total: number;
     }
+  | {
+      readonly kind: "routineFired";
+      readonly routineId: string;
+      readonly roomId: string;
+      readonly name: string;
+    }
   | { readonly kind: "shutdown" };
 
 export type Envelope = { readonly id: number; readonly event: HowdyEvent };

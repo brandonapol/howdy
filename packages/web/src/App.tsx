@@ -11,6 +11,7 @@ import { BotEditor } from "./components/BotEditor.js";
 import { PermissionPrompt } from "./components/PermissionPrompt.js";
 import { PartyDialog } from "./components/PartyDialog.js";
 import { Timeline } from "./components/Timeline.js";
+import { Routines } from "./components/Routines.js";
 import { Meter } from "./components/Meter.js";
 
 const soloRoom = (bot: Bot): string => `solo-${bot.slug}`;
@@ -34,6 +35,7 @@ export const App = () => {
   const [editing, setEditing] = useState(false);
   const [partying, setPartying] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
+  const [showRoutines, setShowRoutines] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -164,6 +166,7 @@ export const App = () => {
           setSelection(next);
           setEditing(false);
           setShowTimeline(false);
+          setShowRoutines(false);
         }}
         onNewBot={() => {
           const name = prompt("Name your bot");
@@ -180,6 +183,10 @@ export const App = () => {
         }}
         onNewParty={() => setPartying(true)}
         onConfigure={() => setEditing((v) => !v)}
+        onRoutines={() => {
+          setShowRoutines((v) => !v);
+          setEditing(false);
+        }}
       />
 
       <main className="main">
@@ -234,7 +241,9 @@ export const App = () => {
           </div>
         )}
 
-        {editing && bot !== null ? (
+        {showRoutines ? (
+          <Routines rooms={rooms} onClose={() => setShowRoutines(false)} />
+        ) : editing && bot !== null ? (
           <BotEditor
             botId={bot.id}
             onClose={() => setEditing(false)}

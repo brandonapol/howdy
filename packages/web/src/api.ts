@@ -1,4 +1,4 @@
-import type { Bot, BotDetail, Message, Room, TimelineEntry } from "./types.js";
+import type { Bot, BotDetail, Message, Room, Routine, Schedule, TimelineEntry } from "./types.js";
 
 const secret = (): string | null => {
   try {
@@ -67,6 +67,15 @@ export const api = {
     request<{ ok: boolean }>(`/api/rooms/${id}/step`, { method: "POST" }),
   messages: (roomId: string) => request<Message[]>(`/api/rooms/${roomId}/messages`),
   timeline: (roomId: string) => request<TimelineEntry[]>(`/api/rooms/${roomId}/timeline`),
+  routines: () => request<Routine[]>("/api/routines"),
+  createRoutine: (input: { name: string; roomId: string; prompt: string; schedule: Schedule }) =>
+    request<Routine>("/api/routines", { method: "POST", body: JSON.stringify(input) }),
+  updateRoutine: (id: string, patch: Record<string, unknown>) =>
+    request<Routine>(`/api/routines/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  deleteRoutine: (id: string) =>
+    request<{ ok: boolean }>(`/api/routines/${id}`, { method: "DELETE" }),
+  runRoutine: (id: string) =>
+    request<{ ok: boolean; status: string | null }>(`/api/routines/${id}/run`, { method: "POST" }),
   send: (roomId: string, text: string, botId?: string) =>
     request<{ ok: boolean }>(`/api/rooms/${roomId}/messages`, {
       method: "POST",
