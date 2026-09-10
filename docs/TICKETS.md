@@ -51,7 +51,7 @@ returns a verdict plus a human-readable reason. No model calls, ever.
 and a degenerate one (must fire within 4 messages).
 deps: H-2
 
-### H-6 · Prompt assembly — `todo`
+### H-6 · Prompt assembly — `done`
 `packages/core/src/prompt.ts`. `buildSystemPrompt(bot, memory, roomCtx)` and
 `buildTurnPrompt(recent, speaker)`. Stable content first for cache hits; the
 volatile transcript last. Emits the cache breakpoint position rather than calling
@@ -65,14 +65,14 @@ deps: H-2
 
 ## M1 — One bot, one room
 
-### H-7 · SQLite schema + migrations — `todo`
+### H-7 · SQLite schema + migrations — `done`
 `packages/server/src/db/`. Tables: `bots`, `rooms`, `room_participants`,
 `messages`, `turns`, `permissions`. FTS5 virtual table over `messages.content`.
 WAL, `synchronous=NORMAL`, `busy_timeout`. Forward-only numbered migrations.
 
 **Done when:** migrations run twice with no error, and FTS5 returns a hit.
 
-### H-8 · Hono server + SSE event bus — `todo`
+### H-8 · Hono server + SSE event bus — `done`
 `packages/server/src/http/`. `GET /api/stream` SSE with heartbeat and
 `Last-Event-ID` replay from a bounded ring buffer. Typed event union shared from
 `core`. Serves the built web bundle in production.
@@ -81,7 +81,7 @@ WAL, `synchronous=NORMAL`, `busy_timeout`. Forward-only numbered migrations.
 a killed tab does not leak a listener.
 deps: H-2
 
-### H-9 · Agent runner — `todo`
+### H-9 · Agent runner — `done`
 `packages/server/src/agent/run.ts`. Wraps `query()` from
 `@anthropic-ai/claude-agent-sdk`. Owns the `AbortController` registry, translates
 `SDKMessage` into domain events, extracts usage from the result message, and
@@ -94,7 +94,7 @@ before writing this — do not trust the docs summary or memory.**
 the subprocess within 2s.
 deps: H-8
 
-### H-10 · Turn queue — `todo`
+### H-10 · Turn queue — `done`
 `packages/server/src/orchestrator/queue.ts`. Concurrency 1. Serializes every
 agent turn process-wide, surfaces queue depth as an event, drains cleanly on
 shutdown. This is the thing standing between a bot party and 4GB of swap death.
@@ -109,6 +109,19 @@ sidebar, composer. Consumes the SSE stream via a typed hook with reconnect.
 
 **Done when:** you can hold a real conversation with one bot in a browser.
 deps: H-8, H-9
+
+### H-32 · Per-turn watchdog — `done`
+A hard timeout on a single agent turn, independent of the room's wall-clock
+ceiling. On expiry: abort the subprocess, emit `turnFailed`, release the queue.
+Default 180s, per-bot override.
+
+Grok Bot's users report stalled agents as a top-three complaint, and with
+concurrency 1 a single hung turn blocks every room on the box. The queue is not
+safe to ship without this.
+
+**Done when:** a deliberately hung turn is reaped inside the timeout and the
+next queued turn runs.
+deps: H-10
 
 ---
 
@@ -228,6 +241,60 @@ The thing you actually read when a party goes weird.
 **Done when:** every halt reason from H-4 renders with its trigger.
 deps: H-22
 
+### H-31 · Global spend governor — `todo`
+Daily and weekly token ceilings across **every** room, routine and bot, checked
+*before* a turn is dispatched rather than after it lands. Rolling windows in
+SQLite, a dedicated UI meter, and a hard stop that no room can talk its way past.
+
+This is the single most reported Grok Bot failure: per-conversation limits did
+nothing about six agents running all week. Per-room ceilings alone reproduce
+that bug exactly.
+
+**Done when:** with a daily cap of 50k, the eleventh 5k-token turn is refused
+before it spawns a subprocess, in a different room from the first ten.
+deps: H-20
+
+### H-37 · Room goals and completion detection — `todo`
+A room may carry a goal string. After each round, a cheap Haiku call judges
+whether the goal is met and returns `done | continue | stuck`. On `done`, the
+party stops and posts a summary.
+
+Today a party that has genuinely finished keeps going until a ceiling or a
+detector stops it. The difference between "the bots stopped" and "the bots are
+done" is most of the perceived quality.
+
+**Done when:** a room asked to settle one factual question ends on `done` in
+fewer turns than its ceiling, and an open-ended room still ends on a ceiling.
+deps: H-20
+
+### H-33 · Agent-to-agent handoff — `todo`
+A `handoff(botSlug, reason)` tool. The handoff is routed **through the
+scheduler** as a mention, never as a direct bot-to-bot channel — the research is
+clear that per-pair handoffs work for three agents and collapse beyond that, and
+routing through `step()` keeps one component owning turn allocation.
+
+**Done when:** a bot hands off mid-party, the named bot speaks next, and the
+handoff still respects ceilings and the killswitch.
+deps: H-20
+
+### H-35 · Escalation and notification — `todo`
+A bot may escalate to a human with a question and park the room in
+`awaitingHuman`. Notification via ntfy or a web push subscription so your phone
+buzzes on the LAN. This is Grok's "comes back to you only when something needs a
+human decision", which is most of why an always-on bot is tolerable.
+
+**Done when:** an escalation reaches a phone and answering it resumes the room.
+deps: H-20, H-18
+
+### H-36 · Optional LLM chair — `todo`
+Per-room switch from the noisiness roll to a Haiku "chair" that reads the recent
+transcript and names the next speaker. Relevance-aware, one cheap call per turn.
+Off by default; the cost belongs to the room's own budget.
+
+**Done when:** on a transcript where one bot is obviously the right responder,
+the chair picks it and the roll does not.
+deps: H-20, H-31
+
 ---
 
 ## M5 — Ship it
@@ -253,4 +320,7 @@ deps: H-25
 ### H-27 · Transcript export — `todo` — Markdown/JSON export per room.
 ### H-28 · Bot cloning — `todo` — fork a bot with its personality, fresh memory.
 ### H-29 · Mobile layout — `todo` — the LAN phone case is the real remote control.
+### H-34 · Routines — `todo` — cron-triggered bot tasks ("check my PRs each morning"), each with its own tight budget, all subject to H-31's global governor.
+### H-39 · Skills — `todo` — reusable capability packs mounted per bot, via the Agent SDK's skill support.
+### H-38 · Preflight estimate — `todo` — before a party starts, estimate its cost from the ceilings and show it. Cheap to build, and it reframes the ceiling as a decision rather than a limit.
 ### H-30 · Idle chatter mode — `todo` — bots occasionally start their own party on a cron, under a tight daily budget. Fun, and the single most dangerous feature here, so it lands last and off by default.

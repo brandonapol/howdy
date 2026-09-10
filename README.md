@@ -11,12 +11,15 @@ LAN-only. Runs on an ODROID.
 
 | Milestone | State |
 | --- | --- |
-| M0 Foundations | pure core, scheduler, budgets, detectors — **done, 40 tests green** |
-| M1 One bot, one room | next |
-| M2 Identity & memory | planned |
+| M0 Foundations | pure core, scheduler, budgets, detectors — **done** |
+| M1 One bot, one room | server, DB, SSE, agent runner, queue — **done bar the UI (H-11)** |
+| M2 Identity & memory | bot dirs and `personality.md` shipped early; `remember` tool next |
 | M3 Tools & permissions | planned |
 | M4 The party | planned |
 | M5 Ship it | planned |
+
+**89 tests green.** See [`docs/RESEARCH.md`](docs/RESEARCH.md) for how this
+compares to Grok Bot and what the multi-agent literature says.
 
 Read [`docs/PLAN.md`](docs/PLAN.md) for the architecture and
 [`docs/TICKETS.md`](docs/TICKETS.md) for the work breakdown.
@@ -25,8 +28,8 @@ Read [`docs/PLAN.md`](docs/PLAN.md) for the architecture and
 
 ```
 packages/core     pure domain — no I/O, no dependencies, all of it unit tested
-packages/server   Hono + SQLite + the Claude Agent SDK runner   (M1)
-packages/web      React + Vite UI                                (M1)
+packages/server   Hono + SQLite + the Claude Agent SDK runner
+packages/web      React + Vite UI                                (H-11)
 ops/              systemd unit and install notes                 (M5)
 ```
 
@@ -40,17 +43,30 @@ each other forever — can be tested without spending a token.
 npm install
 npm run typecheck
 npm test
+
+HOWDY_ROOT=~/.howdy npm start --workspace @howdy/server
+curl localhost:4747/api/health
+curl -X POST localhost:4747/api/bots -H 'content-type: application/json' -d '{"name":"Sre"}'
 ```
 
 Node 22+. No native dependencies in `core`, on purpose.
+
+| Env var | Default | Purpose |
+| --- | --- | --- |
+| `HOWDY_ROOT` | `~/.howdy` | bot dirs, workspaces, SQLite |
+| `HOWDY_PORT` | `4747` | listen port |
+| `HOWDY_SECRET` | unset | if set, required as `x-howdy-secret` on every `/api` call bar health |
+| `HOWDY_TURN_TIMEOUT_MS` | `180000` | per-turn watchdog |
+| `HOWDY_DAILY_TOKEN_CEILING` | `2000000` | refuses new turns once spent |
 
 ## The safety rails
 
 Four independent things stop a party, in increasing order of politeness:
 
 1. **Killswitch** — aborts the in-flight subprocess. Button, `Esc Esc`, or `curl`.
-2. **Ceilings** — turns, effective tokens, wall clock, tool calls per turn. Any
-   one of them halts the room and says which.
+2. **Ceilings** — turns, effective tokens, wall clock, tool calls per turn, plus
+   a per-turn watchdog and a daily global ceiling checked *before* a subprocess
+   is spawned. Any one of them halts the room and says which.
 3. **Detectors** — repetition, agreement cascades, and content-free chatter, all
    caught with cheap heuristics rather than a model call.
 4. **Noisiness** — a per-bot dial from lurker to motormouth.

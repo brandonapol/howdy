@@ -1,0 +1,25 @@
+{
+  "name": "@howdy/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc --build",
+    "dev": "node --watch --experimental-strip-types src/main.ts",
+    "start": "node dist/main.js",
+    "test": "tsc --build && node --test --experimental-strip-types test/*.test.ts",
+    "typecheck": "tsc --build"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.267",
+    "@hono/node-server": "^2.1.1",
+    "@howdy/core": "*",
+    "better-sqlite3": "^13.0.3",
+    "hono": "^4.13.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^22.20.2"
+  }
+}
