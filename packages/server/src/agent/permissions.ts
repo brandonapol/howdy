@@ -3,7 +3,13 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { analyzeBash, describePath, isContained } from "@howdy/core";
 import type { Bot } from "@howdy/core";
-import type { CanUseTool, PermissionResult } from "@anthropic-ai/claude-agent-sdk";
+import type {
+  CanUseTool,
+  HookCallbackMatcher,
+  HookJSONOutput,
+  PermissionResult,
+  PreToolUseHookInput,
+} from "@anthropic-ai/claude-agent-sdk";
 import type { Db } from "../db/index.js";
 import type { EventBus } from "../events.js";
 
@@ -21,6 +27,7 @@ export type PendingRequest = {
 
 export type PermissionBroker = {
   readonly gateFor: (bot: Bot, roomId: string) => CanUseTool;
+  readonly hooksFor: (bot: Bot, roomId: string) => Partial<Record<"PreToolUse", HookCallbackMatcher[]>>;
   readonly decide: (id: string, allowed: boolean, always: boolean) => boolean;
   readonly pending: () => readonly Omit<PendingRequest, "resolve">[];
   readonly cancelAll: () => number;
@@ -124,8 +131,14 @@ export const createPermissionBroker = (
       });
     });
 
-  const gateFor = (bot: Bot, roomId: string): CanUseTool =>
-    async (toolName, input, options) => {
+  const decide = async (
+    bot: Bot,
+    roomId: string,
+    toolName: string,
+    input: Record<string, unknown>,
+    signal: AbortSignal,
+  ): Promise<PermissionResult> => {
+    {
       if (toolName === "Bash") {
         const command = typeof input["command"] === "string" ? input["command"] : "";
         const analysis = analyzeBash(command, bot.allowedCommands);
@@ -144,7 +157,7 @@ export const createPermissionBroker = (
           return ask(
             bot, roomId, "Bash", `path:${first}`,
             `${command}\n\nreaches outside the workspace: ${escaping.join(", ")}`,
-            options.signal,
+            signal,
           );
         }
 
@@ -152,7 +165,7 @@ export const createPermissionBroker = (
 
         const rule = analysis.binaries.find((b) => !bot.allowedCommands.includes(b)) ?? command;
         if (remembered(String(bot.id), "Bash", rule)) return allow();
-        return ask(bot, roomId, "Bash", rule, command, options.signal);
+        return ask(bot, roomId, "Bash", rule, command, signal);
       }
 
       if (toolName.startsWith("mcp__howdy-")) return allow();
@@ -165,16 +178,53 @@ export const createPermissionBroker = (
         return ask(
           bot, roomId, toolName, target,
           `${toolName} outside the workspace: ${describePath(bot.workspacePath, target)}`,
-          options.signal,
+          signal,
         );
       }
 
       if (remembered(String(bot.id), toolName, "*")) return allow();
-      return ask(bot, roomId, toolName, "*", `${toolName} with ${JSON.stringify(input).slice(0, 200)}`, options.signal);
+      return ask(bot, roomId, toolName, "*", `${toolName} with ${JSON.stringify(input).slice(0, 200)}`, signal);
+    }
+  };
+
+  const gateFor = (bot: Bot, roomId: string): CanUseTool =>
+    async (toolName, input, options) => decide(bot, roomId, toolName, input, options.signal);
+
+  const hooksFor = (
+    bot: Bot,
+    roomId: string,
+  ): Partial<Record<"PreToolUse", HookCallbackMatcher[]>> => {
+    return {
+      PreToolUse: [
+        {
+          hooks: [
+            async (input, _toolUseId, options): Promise<HookJSONOutput> => {
+              const event = input as PreToolUseHookInput;
+              const decision = await decide(
+                bot,
+                roomId,
+                event.tool_name,
+                (event.tool_input ?? {}) as Record<string, unknown>,
+                options.signal,
+              );
+              return {
+                hookSpecificOutput: {
+                  hookEventName: "PreToolUse",
+                  permissionDecision: decision.behavior === "allow" ? "allow" : "deny",
+                  permissionDecisionReason:
+                    decision.behavior === "deny" ? decision.message : "allowed by Howdy",
+                },
+              };
+            },
+          ],
+        },
+      ],
     };
+  };
 
   return {
     gateFor,
+    hooksFor,
     decide: (id, allowed, always) => {
       const request = waiting.get(id);
       if (request === undefined) return false;

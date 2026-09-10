@@ -357,7 +357,7 @@ export const createOrchestrator = (deps: Deps): Orchestrator => {
             systemPrompt: system.text,
             cwd: bot.workspacePath,
             model: bot.model,
-            allowedTools: [
+            tools: [
               "Bash", "Read", "Write", "Edit", "Glob", "Grep",
               "mcp__howdy-memory__remember", "mcp__howdy-memory__recall",
               ...(cast.length > 0 ? ["mcp__howdy-room__handoff"] : []),
@@ -365,6 +365,7 @@ export const createOrchestrator = (deps: Deps): Orchestrator => {
             maxTurns: 12,
             signal,
             canUseTool: broker.gateFor(bot, roomId),
+            hooks: broker.hooksFor(bot, roomId),
             mcpServers: {
               "howdy-memory": createMemoryServer(bot, roomId, { db, bus, bots }),
               ...(cast.length === 0

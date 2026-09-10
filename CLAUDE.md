@@ -66,6 +66,25 @@ packages/web      React + Vite, hand-written CSS
 ops/              systemd units, install script, ODROID and GitHub notes
 ```
 
+## The Agent SDK trap that cost us a security hole
+
+`allowedTools` in the Agent SDK means **auto-approve**, not "which tools
+exist". Listing `Bash` there approves every Bash call *before* `canUseTool` is
+consulted, so the permission gate never runs. Use `tools` to declare what is
+available and leave `allowedTools` unset.
+
+Worse: `canUseTool` can be shadowed entirely — by allow rules in settings, or
+by the harness a session runs under — and when that happens the SDK gives no
+error, it just never calls your callback. **The gate is therefore enforced in a
+`PreToolUse` hook**, which fires reliably, with `canUseTool` kept as a second
+line. Both call the same `decide()` function.
+
+None of this was visible from unit tests, because the fake agent called
+`canUseTool` directly and dutifully passed. It took one real smoke test against
+the live SDK to notice that a bot could run `whoami` with an allowlist of
+`["pwd","echo"]`. **Run a real turn against the real SDK before trusting
+anything about tool permissions.**
+
 ## Gotchas
 
 - `docs/TICKETS.md` is the source of truth for status. Update it when you

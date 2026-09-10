@@ -250,3 +250,64 @@ test("settledPath resolves symlinks but tolerates paths that do not exist yet", 
   assert.ok(fresh.startsWith(h.workspace) || fresh.includes("brand/new/file.md"));
   h.cleanup();
 });
+
+test("the gate is also enforced through a PreToolUse hook, not only canUseTool", async () => {
+  const h = harness(120);
+  const hooks = h.broker.hooksFor(h.bot, "general");
+  const hook = hooks.PreToolUse?.[0]?.hooks[0];
+  assert.ok(hook !== undefined, "a PreToolUse hook must be provided");
+
+  const forbidden = await hook(
+    {
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "sudo rm -rf /" },
+      tool_use_id: "t1",
+    } as never,
+    "t1",
+    { signal: h.signal },
+  );
+  assert.equal(
+    (forbidden as { hookSpecificOutput: { permissionDecision: string } }).hookSpecificOutput
+      .permissionDecision,
+    "deny",
+  );
+
+  const allowed = await hook(
+    {
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "gh pr list" },
+      tool_use_id: "t2",
+    } as never,
+    "t2",
+    { signal: h.signal },
+  );
+  assert.equal(
+    (allowed as { hookSpecificOutput: { permissionDecision: string } }).hookSpecificOutput
+      .permissionDecision,
+    "allow",
+  );
+  h.cleanup();
+});
+
+test("an unknown binary reaching the hook denies when nobody answers", async () => {
+  const h = harness(120);
+  const hook = h.broker.hooksFor(h.bot, "general").PreToolUse?.[0]?.hooks[0];
+  assert.ok(hook !== undefined);
+  const result = await hook(
+    {
+      hook_event_name: "PreToolUse",
+      tool_name: "Bash",
+      tool_input: { command: "terraform apply" },
+      tool_use_id: "t3",
+    } as never,
+    "t3",
+    { signal: h.signal },
+  );
+  const out = (result as { hookSpecificOutput: { permissionDecision: string; permissionDecisionReason: string } })
+    .hookSpecificOutput;
+  assert.equal(out.permissionDecision, "deny");
+  assert.match(out.permissionDecisionReason, /denied by default/);
+  h.cleanup();
+});

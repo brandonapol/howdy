@@ -1,5 +1,10 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { CanUseTool, McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
+import type {
+  CanUseTool,
+  HookCallbackMatcher,
+  HookEvent,
+  McpServerConfig,
+} from "@anthropic-ai/claude-agent-sdk";
 import type { AgentFrame, TurnOutcome } from "./outcome.js";
 import { emptyOutcome, foldFrame } from "./outcome.js";
 
@@ -8,12 +13,13 @@ export type RunTurnInput = {
   readonly systemPrompt: string;
   readonly cwd: string;
   readonly model: string;
-  readonly allowedTools: readonly string[];
+  readonly tools: readonly string[];
   readonly disallowedTools?: readonly string[];
   readonly resume?: string | undefined;
   readonly maxTurns: number;
   readonly signal: AbortSignal;
   readonly canUseTool?: CanUseTool;
+  readonly hooks?: Partial<Record<HookEvent, HookCallbackMatcher[]>>;
   readonly mcpServers?: Record<string, McpServerConfig>;
   readonly onText?: (text: string) => void;
   readonly onToolUse?: (tool: string) => void;
@@ -38,11 +44,12 @@ export const runTurn = async (input: RunTurnInput): Promise<TurnOutcome> => {
       cwd: input.cwd,
       model: input.model,
       systemPrompt: { type: "custom", prompt: input.systemPrompt },
-      allowedTools: [...input.allowedTools],
+      tools: [...input.tools],
       ...(input.disallowedTools === undefined
         ? {}
         : { disallowedTools: [...input.disallowedTools] }),
       ...(input.canUseTool === undefined ? {} : { canUseTool: input.canUseTool }),
+      ...(input.hooks === undefined ? {} : { hooks: input.hooks }),
       ...(input.mcpServers === undefined ? {} : { mcpServers: input.mcpServers }),
       ...(input.resume === undefined ? {} : { resume: input.resume }),
       maxTurns: input.maxTurns,

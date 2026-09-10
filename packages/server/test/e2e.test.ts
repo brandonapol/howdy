@@ -493,3 +493,72 @@ test("panic stops everything across every room at once", async (t) => {
   await sleep(200);
   assert.equal((await h.get<{ queueDepth: number }>("/api/health")).queueDepth, 0);
 });
+
+test("every turn is given both permission adapters, since one can be shadowed", async (t) => {
+  const h = await startHowdy();
+  t.after(() => h.cleanup());
+  const bot = await h.post<{ id: string }>("/api/bots", { name: "Sre" });
+  const stream = await openStream(h.url);
+  t.after(() => stream.close());
+
+  let sawHook = false;
+  let sawCallback = false;
+  let hookVerdict = "";
+
+  h.setScript(async (input) => {
+    sawCallback = typeof input.canUseTool === "function";
+    const hook = input.hooks?.PreToolUse?.[0]?.hooks[0];
+    sawHook = hook !== undefined;
+    if (hook !== undefined) {
+      const out = (await hook(
+        {
+          hook_event_name: "PreToolUse",
+          tool_name: "Bash",
+          tool_input: { command: "sudo rm -rf /" },
+          tool_use_id: "x",
+        } as never,
+        "x",
+        { signal: input.signal },
+      )) as { hookSpecificOutput: { permissionDecision: string } };
+      hookVerdict = out.hookSpecificOutput.permissionDecision;
+    }
+    return {
+      text: "checked", toolCalls: [], usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
+      costUsd: 0, sessionId: null, isError: false, detail: null,
+    };
+  });
+
+  await h.post("/api/rooms/general/messages", { text: "go", botId: bot.id });
+  await stream.waitFor("turnFinished");
+
+  assert.equal(sawCallback, true, "canUseTool must still be supplied");
+  assert.equal(sawHook, true, "a PreToolUse hook must be supplied — canUseTool alone can be shadowed");
+  assert.equal(hookVerdict, "deny", "the hook must actually enforce the gate");
+});
+
+test("tools are declared with `tools`, never auto-approved via allowedTools", async (t) => {
+  const h = await startHowdy();
+  t.after(() => h.cleanup());
+  const bot = await h.post<{ id: string }>("/api/bots", { name: "Sre" });
+  const stream = await openStream(h.url);
+  t.after(() => stream.close());
+
+  let seen: Record<string, unknown> = {};
+  h.setScript(async (input) => {
+    seen = input as unknown as Record<string, unknown>;
+    return {
+      text: "ok", toolCalls: [], usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0 },
+      costUsd: 0, sessionId: null, isError: false, detail: null,
+    };
+  });
+  await h.post("/api/rooms/general/messages", { text: "go", botId: bot.id });
+  await stream.waitFor("turnFinished");
+
+  assert.ok(Array.isArray(seen["tools"]), "tools must be declared");
+  assert.ok((seen["tools"] as string[]).includes("Bash"));
+  assert.equal(
+    seen["allowedTools"],
+    undefined,
+    "allowedTools auto-approves and shadows the gate — it must never be set",
+  );
+});

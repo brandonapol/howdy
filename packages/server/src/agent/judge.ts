@@ -57,7 +57,7 @@ export const createJudge = (model = "claude-haiku-4-5"): Judge =>
         options: {
           model,
           systemPrompt: { type: "custom", prompt: SYSTEM },
-          allowedTools: [],
+          tools: [],
           maxTurns: 1,
           settingSources: [],
           abortController: controller,

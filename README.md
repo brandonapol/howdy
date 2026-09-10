@@ -18,7 +18,7 @@ LAN-only. Runs on an ODROID.
 | M4 The party | orchestrator, killswitch, governors, party UI, handoff, goal completion, timeline — **done** |
 | M5 Ship it | systemd units, install script, backup and restore, ops docs — **done** |
 
-**340 tests green**, including 82 API end-to-end and 18 browser end-to-end.
+**344 tests green**, including 86 API end-to-end and 18 browser end-to-end, plus a live smoke test against the real Agent SDK.
 
 Read [`docs/PLAN.md`](docs/PLAN.md) for the architecture,
 [`docs/TICKETS.md`](docs/TICKETS.md) for the work breakdown,

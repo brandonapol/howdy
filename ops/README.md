@@ -116,6 +116,10 @@ rsync -a packages/web/dist/ odroid:~/howdy/packages/web/dist/
 
 This is a home-LAN appliance and the threat model is honest about that:
 
+- **The gate runs in a `PreToolUse` hook.** The SDK's `canUseTool` callback can
+  be silently shadowed by settings or by a host harness; the hook cannot. If
+  you fork this and switch back to `canUseTool` alone, verify with a real turn
+  that a non-allowlisted command is actually refused.
 - **Bots are confined to their own workspace.** File tools resolve symlinks
   before checking containment; Bash commands have their binaries and their path
   arguments checked. Anything outside prompts you.
