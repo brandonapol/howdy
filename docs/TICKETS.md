@@ -103,7 +103,7 @@ shutdown. This is the thing standing between a bot party and 4GB of swap death.
 mid-queue halt drops the pending ones.
 deps: H-9
 
-### H-11 · Chat UI — `todo`
+### H-11 · Chat UI — `done`
 `packages/web`. React + Vite + Tailwind. Room view with streamed messages, bot
 sidebar, composer. Consumes the SSE stream via a typed hook with reconnect.
 
@@ -154,7 +154,7 @@ never runs while a turn is in flight.
 in a fixture test.
 deps: H-13
 
-### H-15 · Bot config UI — `todo`
+### H-15 · Bot config UI — `done`
 Editor for name, model, effort, noisiness, cooldown, avatar colour, tool
 allowlist, and a Markdown editor for `personality.md` with a live token count.
 
@@ -220,7 +220,7 @@ the room, posts a system message. Big red button, `Esc Esc` shortcut, and a
 **Done when:** a running party stops within 2s, subprocess included, measured.
 deps: H-20
 
-### H-22 · Budget meter UI — `todo`
+### H-22 · Budget meter UI — `todo` (daily meter shipped in H-11; per-room ceilings outstanding)
 Live tokens/turns/wall-clock against ceilings, per room. Goes amber at 75%,
 red at 90%. Shows which ceiling stopped a halted party.
 

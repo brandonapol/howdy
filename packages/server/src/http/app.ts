@@ -74,13 +74,18 @@ export const createApp = (deps: AppDeps): Hono => {
   app.use("/api/*", async (c, next) => {
     if (config.sharedSecret === null) return next();
     if (c.req.path === "/api/health") return next();
-    const provided = c.req.header("x-howdy-secret");
+    const provided = c.req.header("x-howdy-secret") ?? c.req.query("secret");
     if (provided !== config.sharedSecret) return c.json({ error: "unauthorized" }, 401);
     return next();
   });
 
   app.get("/api/health", (c) =>
-    c.json({ ok: true, queueDepth: queue.depth(), spend: spendToday(db) }),
+    c.json({
+      ok: true,
+      queueDepth: queue.depth(),
+      spend: spendToday(db),
+      tokenCeiling: config.dailyTokenCeiling,
+    }),
   );
 
   app.get("/api/stream", (c) =>

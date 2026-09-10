@@ -36,9 +36,10 @@ test("health reports the queue and today's spend", async () => {
   const h = harness();
   const res = await h.app.fetch(new Request("http://x/api/health"));
   assert.equal(res.status, 200);
-  const body = (await res.json()) as { ok: boolean; queueDepth: number };
+  const body = (await res.json()) as { ok: boolean; queueDepth: number; tokenCeiling: number };
   assert.equal(body.ok, true);
   assert.equal(body.queueDepth, 0);
+  assert.equal(body.tokenCeiling, 1_000_000, "the UI meter needs the ceiling before any spend lands");
   h.cleanup();
 });
 
@@ -143,6 +144,10 @@ test("the shared secret gates the api but never the health check", async () => {
     new Request("http://x/api/bots", { headers: { "x-howdy-secret": "hunter2" } }),
   );
   assert.equal(ok.status, 200);
+
+  const viaQuery = await h.app.fetch(new Request("http://x/api/bots?secret=hunter2"));
+  assert.equal(viaQuery.status, 200, "EventSource cannot set headers, so the query param must work");
+  assert.equal((await h.app.fetch(new Request("http://x/api/bots?secret=wrong"))).status, 401);
   h.cleanup();
 });
 

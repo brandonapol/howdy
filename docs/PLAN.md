@@ -32,6 +32,7 @@ These drive nearly every decision below.
 | Sandbox | Per-bot workspace + Bash allowlist | Each bot lives in `~/.howdy/workspaces/<slug>`. Anything outside the allowlist raises a UI prompt. |
 | Transport | SSE down, POST up | Only server→client push is needed. SSE reconnects on its own and survives an ODROID hiccup better than a WebSocket. |
 | Persistence | SQLite (`better-sqlite3`) + flat Markdown | Structured state in SQLite; identity and memory as files you can edit in vim. |
+| Styling | Hand-written CSS, no framework | Tailwind v4's compiler is a native binary, and "no native build deps" is a theme here. The app is one screen; 5KB of CSS with custom properties does it, builds on any arch, and keeps the on-device build path open. |
 
 ## 3. Architecture
 

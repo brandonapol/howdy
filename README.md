@@ -12,13 +12,13 @@ LAN-only. Runs on an ODROID.
 | Milestone | State |
 | --- | --- |
 | M0 Foundations | pure core, scheduler, budgets, detectors — **done** |
-| M1 One bot, one room | server, DB, SSE, agent runner, queue — **done bar the UI (H-11)** |
-| M2 Identity & memory | bot dirs and `personality.md` shipped early; `remember` tool next |
+| M1 One bot, one room | server, DB, SSE, agent runner, queue, **UI — done** |
+| M2 Identity & memory | bot dirs, `personality.md` and the config UI shipped early; `remember` tool next |
 | M3 Tools & permissions | planned |
 | M4 The party | planned |
 | M5 Ship it | planned |
 
-**89 tests green.** See [`docs/RESEARCH.md`](docs/RESEARCH.md) for how this
+**103 tests green.** See [`docs/RESEARCH.md`](docs/RESEARCH.md) for how this
 compares to Grok Bot and what the multi-agent literature says.
 
 Read [`docs/PLAN.md`](docs/PLAN.md) for the architecture and
@@ -29,7 +29,7 @@ Read [`docs/PLAN.md`](docs/PLAN.md) for the architecture and
 ```
 packages/core     pure domain — no I/O, no dependencies, all of it unit tested
 packages/server   Hono + SQLite + the Claude Agent SDK runner
-packages/web      React + Vite UI                                (H-11)
+packages/web      React + Vite UI, hand-written CSS, no framework
 ops/              systemd unit and install notes                 (M5)
 ```
 
@@ -44,10 +44,14 @@ npm install
 npm run typecheck
 npm test
 
-HOWDY_ROOT=~/.howdy npm start --workspace @howdy/server
-curl localhost:4747/api/health
-curl -X POST localhost:4747/api/bots -H 'content-type: application/json' -d '{"name":"Sre"}'
+npm run build
+
+HOWDY_ROOT=~/.howdy HOWDY_WEB_DIST=packages/web/dist npm start --workspace @howdy/server
 ```
+
+Then open `http://<your-odroid>:4747`. For UI development with hot reload, run
+the server as above and `npm run dev --workspace @howdy/web` alongside it; Vite
+proxies `/api` through.
 
 Node 22+. No native dependencies in `core`, on purpose.
 
