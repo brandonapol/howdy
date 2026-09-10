@@ -225,6 +225,37 @@ export const createApp = (deps: AppDeps): Hono => {
 
   app.get("/api/search", (c) => c.json(searchMessages(db, c.req.query("q") ?? "")));
 
+  app.get("/api/rooms/:id/timeline", (c) => {
+    const roomId = c.req.param("id");
+    if (orchestrator.get(roomId) === null) return c.json({ error: "no such room" }, 404);
+
+    const turns = db
+      .prepare(
+        `SELECT t.id, t.bot_id AS botId, t.status, t.detail, t.duration_ms AS durationMs,
+                t.started_at AS startedAt,
+                m.content, m.tool_call_count AS toolCalls,
+                m.input_tokens + m.output_tokens AS tokens, m.cost_usd AS costUsd
+         FROM turns t
+         LEFT JOIN messages m ON m.id = t.message_id
+         WHERE t.room_id = ? ORDER BY t.started_at`,
+      )
+      .all(roomId) as Record<string, unknown>[];
+
+    const notes = db
+      .prepare(
+        `SELECT id, content, created_at AS startedAt FROM messages
+         WHERE room_id = ? AND speaker_kind = 'system' ORDER BY created_at`,
+      )
+      .all(roomId) as Record<string, unknown>[];
+
+    const entries: Record<string, unknown>[] = [
+      ...turns.map((t): Record<string, unknown> => ({ ...t, kind: "turn" })),
+      ...notes.map((n): Record<string, unknown> => ({ ...n, kind: "note" })),
+    ].sort((a, b) => Number(a["startedAt"] ?? 0) - Number(b["startedAt"] ?? 0));
+
+    return c.json(entries);
+  });
+
   app.post("/api/rooms/:id/messages", async (c) => {
     const roomId = c.req.param("id");
     const body = (await c.req.json()) as { text?: string; botId?: string };

@@ -240,7 +240,7 @@ and step mode. Save as reusable presets.
 **Done when:** a saved preset reproduces the same party shape twice.
 deps: H-15, H-20
 
-### H-24 · Party observability — `todo`
+### H-24 · Party observability — `done`
 Timeline view: who spoke, what it cost, which rule fired, why the party stopped.
 The thing you actually read when a party goes weird.
 

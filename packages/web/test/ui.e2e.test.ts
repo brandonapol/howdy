@@ -546,3 +546,43 @@ test("each bot keeps its own conversation", async (t) => {
   );
   assert.equal(await app.page.locator(".msg").count(), 0);
 });
+
+test("the timeline explains what a party cost and why it stopped", async (t) => {
+  const h = await stage();
+  t.after(() => h.cleanup());
+  const bots = await Promise.all([
+    h.post<{ id: string }>("/api/bots", { name: "Sre" }),
+    h.post<{ id: string }>("/api/bots", { name: "Dev" }),
+  ]);
+  await h.post("/api/rooms", {
+    name: "audit me",
+    kind: "party",
+    ceilings: { maxTurns: 4 },
+    participants: bots.map((b) => ({ botId: b.id, noisiness: 1, cooldownTurns: 0 })),
+  });
+
+  const app = await openApp(browser, h.url);
+  t.after(() => app.close());
+  await app.page.waitForSelector(".dot.open");
+  await app.page.locator(`.bot:has-text("audit me")`).click();
+
+  h.setScript(partyScript());
+  await app.page.locator("textarea").fill("go");
+  await app.page.locator("textarea").press("Enter");
+  await app.page.waitForSelector(".roombar .state.halted", { timeout: 25000 });
+
+  await app.page.locator("button:has-text('Timeline')").click();
+  await app.page.waitForSelector(".tl", { timeout: 8000 });
+
+  const rows = await app.page.locator(".tl tr").count();
+  assert.ok(rows >= 4, `expected a row per turn, saw ${rows}`);
+  assert.match((await app.page.locator(".tl-summary").textContent()) ?? "", /4 turns/);
+  assert.match((await app.page.locator(".tl-summary").textContent()) ?? "", /tokens/);
+
+  const names = await app.page.locator(".tl-who").allTextContents();
+  assert.equal(new Set(names).size, 2, "both bots should appear in the audit");
+
+  await app.page.locator("button:has-text('Transcript')").click();
+  await app.page.waitForSelector(".transcript", { timeout: 5000 });
+  assert.deepEqual(app.errors, []);
+});

@@ -112,4 +112,7 @@ export const migrations: readonly string[] = [
   ALTER TABLE rooms ADD COLUMN pending_mentions TEXT NOT NULL DEFAULT '[]';
   ALTER TABLE room_participants ADD COLUMN base_noisiness REAL NOT NULL DEFAULT 0.7;
   `,
+  `
+  ALTER TABLE turns ADD COLUMN message_id TEXT;
+  `,
 ];

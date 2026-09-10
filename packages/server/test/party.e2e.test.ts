@@ -507,3 +507,84 @@ test("a solo room is given no handoff tool at all", async (t) => {
 
   assert.deepEqual(servers, ["howdy-memory"], "no colleagues means no handoff tool");
 });
+
+test("the timeline records every turn with its cost, and every reason the room stopped", async (t) => {
+  const h = await startHowdy();
+  t.after(() => h.cleanup());
+  const bots = await cast(h, ["Sre", "Dev"]);
+  const room = await party(h, bots, { ceilings: { maxTurns: 4 } });
+  const stream = await openStream(h.url);
+  t.after(() => stream.close());
+  h.setScript(varied());
+
+  await h.post(`/api/rooms/${room.id}/messages`, { text: "go" });
+  await stream.waitFor("halted", 15_000);
+  await sleep(300);
+
+  const timeline = await h.get<
+    { kind: string; botId?: string; status?: string; tokens?: number; durationMs?: number; content?: string }[]
+  >(`/api/rooms/${room.id}/timeline`);
+
+  const turns = timeline.filter((e) => e.kind === "turn");
+  assert.equal(turns.length, 4, "every turn should be recorded");
+  for (const turn of turns) {
+    assert.equal(turn.status, "ok");
+    assert.ok((turn.durationMs ?? -1) >= 0, "each turn should carry a duration");
+    assert.equal(turn.tokens, 450, "each turn should carry its token cost");
+    assert.ok(turn.botId !== undefined);
+  }
+  assert.equal(new Set(turns.map((e) => e.botId)).size, 2);
+});
+
+test("a failed turn is recorded as failed with its reason", async (t) => {
+  const h = await startHowdy({ turnTimeoutMs: 250 });
+  t.after(() => h.cleanup());
+  const bots = await cast(h, ["Sre", "Dev"]);
+  const room = await party(h, bots, { ceilings: { maxTurns: 2 } });
+  const stream = await openStream(h.url);
+  t.after(() => stream.close());
+
+  h.setScript(async (input) => {
+    await sleep(20_000, input.signal);
+    throw new Error("unreachable");
+  });
+  await h.post(`/api/rooms/${room.id}/messages`, { text: "hang" });
+  await stream.waitFor("halted", 15_000);
+  await sleep(300);
+
+  const timeline = await h.get<{ kind: string; status?: string; detail?: string }[]>(
+    `/api/rooms/${room.id}/timeline`,
+  );
+  const failed = timeline.filter((e) => e.kind === "turn" && e.status === "failed");
+  assert.ok(failed.length >= 1, "a reaped turn must be recorded, not lost");
+  assert.match(failed[0]?.detail ?? "", /watchdog/);
+});
+
+test("the timeline carries the note explaining why a room stopped", async (t) => {
+  const h = await startHowdy({ dailyTokenCeiling: 700 });
+  t.after(() => h.cleanup());
+  const bots = await cast(h, ["Sre", "Dev"]);
+  const room = await party(h, bots, { ceilings: { maxTurns: 50, maxTokens: 10_000_000 } });
+  const stream = await openStream(h.url);
+  t.after(() => stream.close());
+  h.setScript(varied());
+
+  await h.post(`/api/rooms/${room.id}/messages`, { text: "go" });
+  await stream.waitFor("halted", 15_000);
+  await sleep(300);
+
+  const timeline = await h.get<{ kind: string; content?: string }[]>(
+    `/api/rooms/${room.id}/timeline`,
+  );
+  const notes = timeline.filter((e) => e.kind === "note");
+  assert.ok(notes.some((n) => /daily ceiling/.test(n.content ?? "")));
+});
+
+test("the timeline of an unknown room is a 404, not an empty list", async (t) => {
+  const h = await startHowdy();
+  t.after(() => h.cleanup());
+  await assert.rejects(
+    () => h.get("/api/rooms/ghost/timeline"),
+    (e: unknown) => (e as { status: number }).status === 404,
+  );
+});

@@ -330,6 +330,24 @@ export const createOrchestrator = (deps: Deps): Orchestrator => {
 
     bus.publish({ kind: "turnStarted", roomId, botId: String(speaker) });
 
+    const turnId = randomUUID();
+    const startedAt = Date.now();
+    db.prepare(
+      `INSERT INTO turns (id, room_id, bot_id, status, started_at) VALUES (?,?,?,'running',?)`,
+    ).run(turnId, roomId, String(speaker), startedAt);
+
+    const finish = (
+      status: "ok" | "failed",
+      detail: string | null,
+      sessionId: string | null,
+      messageId: string | null = null,
+    ) => {
+      db.prepare(
+        `UPDATE turns SET status = ?, detail = ?, session_id = ?, message_id = ?,
+         duration_ms = ?, finished_at = ? WHERE id = ?`,
+      ).run(status, detail, sessionId, messageId, Date.now() - startedAt, Date.now(), turnId);
+    };
+
     queue
       .submit({
         key: `${roomId}:${String(speaker)}`,
@@ -376,6 +394,12 @@ export const createOrchestrator = (deps: Deps): Orchestrator => {
           roomId, "bot", String(speaker), outcome.text,
           (current?.turnIndex ?? 0) + 1, outcome.toolCalls.length, outcome.usage, outcome.costUsd,
         );
+        finish(
+          outcome.isError ? "failed" : "ok",
+          outcome.detail,
+          outcome.sessionId,
+          String(message.id),
+        );
         recordSpend(db, outcome.usage.inputTokens + outcome.usage.outputTokens, outcome.costUsd);
         bus.publish({
           kind: "turnFinished", roomId, botId: String(speaker),
@@ -391,6 +415,7 @@ export const createOrchestrator = (deps: Deps): Orchestrator => {
       })
       .catch((error: unknown) => {
         const detail = error instanceof Error ? error.message : String(error);
+        finish("failed", detail, null);
         dispatch(roomId, { kind: "turnFailed", speaker, detail });
       });
   };

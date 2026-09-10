@@ -15,10 +15,10 @@ LAN-only. Runs on an ODROID.
 | M1 One bot, one room | server, DB, SSE, agent runner, queue, **UI — done** |
 | M2 Identity & memory | bot dirs, `personality.md`, config UI, `remember`/`recall` tools, compaction — **done** |
 | M3 Tools & permissions | bash analyser, permission gate, approval UI — **done**; `gh` setup documented |
-| M4 The party | orchestrator, killswitch, governors, party UI, handoff, goal completion — **done**; the timeline view is outstanding |
+| M4 The party | orchestrator, killswitch, governors, party UI, handoff, goal completion, timeline — **done** |
 | M5 Ship it | systemd units, install script, backup and restore, ops docs — **done** |
 
-**317 tests green**, including 58 API end-to-end and 16 browser end-to-end. See [`docs/RESEARCH.md`](docs/RESEARCH.md) for how this
+**319 tests green**, including 62 API end-to-end and 17 browser end-to-end. See [`docs/RESEARCH.md`](docs/RESEARCH.md) for how this
 compares to Grok Bot and what the multi-agent literature says.
 
 Read [`docs/PLAN.md`](docs/PLAN.md) for the architecture and

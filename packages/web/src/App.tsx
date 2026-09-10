@@ -10,6 +10,7 @@ import { Composer } from "./components/Composer.js";
 import { BotEditor } from "./components/BotEditor.js";
 import { PermissionPrompt } from "./components/PermissionPrompt.js";
 import { PartyDialog } from "./components/PartyDialog.js";
+import { Timeline } from "./components/Timeline.js";
 import { Meter } from "./components/Meter.js";
 
 const soloRoom = (bot: Bot): string => `solo-${bot.slug}`;
@@ -32,6 +33,7 @@ export const App = () => {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [editing, setEditing] = useState(false);
   const [partying, setPartying] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -161,6 +163,7 @@ export const App = () => {
         onSelect={(next) => {
           setSelection(next);
           setEditing(false);
+          setShowTimeline(false);
         }}
         onNewBot={() => {
           const name = prompt("Name your bot");
@@ -217,6 +220,9 @@ export const App = () => {
                 Resume
               </button>
             )}
+            <button onClick={() => setShowTimeline((v) => !v)}>
+              {showTimeline ? "Transcript" : "Timeline"}
+            </button>
           </div>
         )}
 
@@ -242,6 +248,8 @@ export const App = () => {
               void refresh();
             }}
           />
+        ) : showTimeline && party !== null ? (
+          <Timeline roomId={party.id} bots={bots} refreshKey={room.messages.length} />
         ) : (
           <>
             <Transcript room={room} bots={bots} notices={notices} />

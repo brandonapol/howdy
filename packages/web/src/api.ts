@@ -1,4 +1,4 @@
-import type { Bot, BotDetail, Message, Room } from "./types.js";
+import type { Bot, BotDetail, Message, Room, TimelineEntry } from "./types.js";
 
 const secret = (): string | null => {
   try {
@@ -66,6 +66,7 @@ export const api = {
   advance: (id: string) =>
     request<{ ok: boolean }>(`/api/rooms/${id}/step`, { method: "POST" }),
   messages: (roomId: string) => request<Message[]>(`/api/rooms/${roomId}/messages`),
+  timeline: (roomId: string) => request<TimelineEntry[]>(`/api/rooms/${roomId}/timeline`),
   send: (roomId: string, text: string, botId?: string) =>
     request<{ ok: boolean }>(`/api/rooms/${roomId}/messages`, {
       method: "POST",

@@ -69,6 +69,18 @@ export type Room = {
   };
 };
 
+export type TimelineEntry = {
+  readonly kind: "turn" | "note";
+  readonly botId?: string;
+  readonly status?: "ok" | "failed" | "running";
+  readonly detail?: string | null;
+  readonly durationMs?: number | null;
+  readonly tokens?: number | null;
+  readonly toolCalls?: number | null;
+  readonly content?: string | null;
+  readonly startedAt?: number;
+};
+
 export type HowdyEvent =
   | { readonly kind: "message"; readonly roomId: string; readonly message: Message }
   | { readonly kind: "chunk"; readonly roomId: string; readonly botId: string; readonly text: string }
