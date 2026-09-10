@@ -1,4 +1,4 @@
-import { advanceClock, applyUsage, exceeded, describeBreach } from "./budget.js";
+import { advanceClock, applyUsage, exceeded, describeBreach, resetWindow } from "./budget.js";
 import { defaultDegeneracyConfig, inspect } from "./degeneracy.js";
 import type { DegeneracyConfig } from "./degeneracy.js";
 import { nextRng } from "./rng.js";
@@ -18,7 +18,10 @@ const RECENT_LIMIT = 50;
 const appendRecent = (
   recent: readonly RoomMessage[],
   message: RoomMessage,
-): readonly RoomMessage[] => [...recent, message].slice(-RECENT_LIMIT);
+): readonly RoomMessage[] =>
+  recent.some((m) => m.id === message.id)
+    ? recent
+    : [...recent, message].slice(-RECENT_LIMIT);
 
 const halt = (state: RoomState, reason: HaltReason): Step => {
   const abort: readonly Effect[] =
@@ -60,10 +63,9 @@ const selectSpeaker = (state: RoomState): Step => {
   }
 
   const excluded = state.participants.length > 1 ? lastBotSpeaker(state.recent) : null;
-  const eligible = [...state.participants]
+  const eligible = state.participants
     .filter((p) => p.botId !== excluded)
-    .filter((p) => offCooldown(p, state.turnIndex))
-    .sort((a, b) => (a.botId < b.botId ? -1 : a.botId > b.botId ? 1 : 0));
+    .filter((p) => offCooldown(p, state.turnIndex));
 
   let rngState = state.rngState;
   let best: { readonly botId: BotId; readonly margin: number } | null = null;
@@ -156,13 +158,23 @@ export const step = (
     }
 
     case "humanMessage": {
-      if (state.status.kind === "halted") return [state, []];
+      if (state.status.kind === "halted") {
+        const reason = state.status.reason.kind;
+        const machineStopped = reason === "budget" || reason === "degeneracy";
+        if (!machineStopped) return [state, []];
+      }
       return selectSpeaker({
         ...state,
         recent: appendRecent(state.recent, event.message),
         turnIndex: state.turnIndex + 1,
         pendingMentions: [...state.pendingMentions, ...event.mentions],
         decayCount: 0,
+        status: { kind: "idle" },
+        budget: resetWindow(state.budget, event.message.createdAt),
+        participants: state.participants.map((p) => ({
+          ...p,
+          noisiness: p.baseNoisiness,
+        })),
       });
     }
 

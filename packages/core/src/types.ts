@@ -107,6 +107,7 @@ export type RoomStatus =
 export type ParticipantState = {
   readonly botId: BotId;
   readonly noisiness: number;
+  readonly baseNoisiness: number;
   readonly cooldownTurns: number;
   readonly lastSpokeAtTurn: number | null;
 };

@@ -81,13 +81,16 @@ test("halting mid-turn kills the turn and records no bot message", async (t) => 
 
   const stopped = await h.post<{ stopped: number }>("/api/rooms/general/halt");
   assert.ok(stopped.stopped >= 1);
-  await stream.waitFor("halted");
+  const halted = await stream.waitFor("halted");
+  assert.equal((halted["reason"] as { kind: string }).kind, "manual");
 
-  const announce = await stream.waitFor("announce");
-  assert.match(String(announce["text"]), /Turn failed/);
-
+  await sleep(300);
   const messages = await h.get<{ speakerKind: string }[]>("/api/rooms/general/messages");
-  assert.deepEqual(messages.map((m) => m.speakerKind), ["human"]);
+  assert.deepEqual(
+    messages.map((m) => m.speakerKind),
+    ["human"],
+    "a deliberate halt should leave no partial reply and no failure noise",
+  );
 });
 
 test("the watchdog reaps a hung turn without wedging the queue", async (t) => {
@@ -442,10 +445,15 @@ test("the bot runs with its own workspace as the working directory", async (t) =
   await h.post("/api/rooms/general/messages", { text: "b", botId: two.id });
   await sleep(300);
 
-  assert.equal(cwds.length, 2);
+  assert.ok(cwds.length >= 2, `expected at least two turns, saw ${cwds.length}`);
   assert.match(cwds[0] ?? "", /workspaces\/one$/);
   assert.match(cwds[1] ?? "", /workspaces\/two$/);
-  assert.notEqual(cwds[0], cwds[1], "bots must not share a workspace");
+  assert.deepEqual(
+    [...new Set(cwds)].sort(),
+    [...new Set(cwds)].sort().filter((c) => /workspaces\/(one|two)$/.test(c)),
+    "every turn must run in its own bot's workspace",
+  );
+  assert.equal(new Set(cwds).size, 2, "bots must not share a workspace");
 });
 
 test("full text search finds something a bot said earlier", async (t) => {

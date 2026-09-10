@@ -52,6 +52,18 @@ export const spendToday = (db: Db, now = Date.now()): { tokens: number; costUsd:
   return row ?? { tokens: 0, costUsd: 0 };
 };
 
+export const spendWindow = (
+  db: Db,
+  days: number,
+  now = Date.now(),
+): { tokens: number; costUsd: number } => {
+  const from = today(now - (days - 1) * 24 * 60 * 60 * 1000);
+  const row = db
+    .prepare("SELECT COALESCE(SUM(tokens),0) AS tokens, COALESCE(SUM(cost_usd),0) AS costUsd FROM spend WHERE day >= ?")
+    .get(from) as { tokens: number; costUsd: number };
+  return row;
+};
+
 export const searchMessages = (
   db: Db,
   query: string,

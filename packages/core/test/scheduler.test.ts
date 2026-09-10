@@ -249,6 +249,103 @@ const simulate = (seedState: RoomState, limit: number) => {
   return { state, transcript, iterations };
 };
 
+test("a human speaking resets the room budget window", () => {
+  const spent = makeState([participant("alpha")], {
+    budget: {
+      ceilings: { ...defaultCeilings, maxTurns: 3 },
+      turnsUsed: 3,
+      tokensUsed: 99_000,
+      startedAt: 0,
+      now: 50_000,
+    },
+  });
+  const [next, effects] = step(spent, {
+    kind: "humanMessage",
+    message: humanMessage("carry on"),
+    mentions: [],
+  });
+  assert.equal(next.budget.turnsUsed, 0);
+  assert.equal(next.budget.tokensUsed, 0);
+  assert.equal(next.status.kind, "running");
+  assert.equal(runTurns(effects).length, 1);
+});
+
+test("a human speaking restores noisiness that a detector decayed", () => {
+  const decayed = makeState([
+    { ...participant("alpha", 0.8), noisiness: 0.1 },
+  ]);
+  const [next] = step(decayed, {
+    kind: "humanMessage",
+    message: humanMessage("go on"),
+    mentions: [],
+  });
+  assert.equal(next.participants[0]?.noisiness, 0.8);
+});
+
+test("a manually halted room is not revived by typing at it", () => {
+  const halted = makeState([participant("alpha")], {
+    status: { kind: "halted", reason: { kind: "manual" } },
+    budget: {
+      ceilings: defaultCeilings, turnsUsed: 5, tokensUsed: 100, startedAt: 0, now: 0,
+    },
+  });
+  const [next, effects] = step(halted, {
+    kind: "humanMessage",
+    message: humanMessage("hello?"),
+    mentions: [],
+  });
+  assert.equal(next.status.kind, "halted");
+  assert.equal(next.budget.turnsUsed, 5, "the window must not reset");
+  assert.deepEqual(effects, []);
+});
+
+test("a human message revives a room the ceilings stopped", () => {
+  const halted = makeState([participant("alpha")], {
+    status: {
+      kind: "halted",
+      reason: { kind: "budget", breach: { kind: "turns", used: 20, ceiling: 20 } },
+    },
+    budget: {
+      ceilings: defaultCeilings, turnsUsed: 20, tokensUsed: 90_000, startedAt: 0, now: 0,
+    },
+  });
+  const [next, effects] = step(halted, {
+    kind: "humanMessage",
+    message: humanMessage("keep going, focus on the hook"),
+    mentions: [],
+  });
+  assert.equal(next.status.kind, "running");
+  assert.equal(next.budget.turnsUsed, 0);
+  assert.equal(runTurns(effects).length, 1);
+});
+
+test("a human message revives a room a detector stopped", () => {
+  const halted = makeState([participant("alpha")], {
+    status: {
+      kind: "halted",
+      reason: { kind: "degeneracy", detector: "repetition", detail: "looping" },
+    },
+  });
+  const [next] = step(halted, {
+    kind: "humanMessage",
+    message: humanMessage("stop repeating and check the logs"),
+    mentions: [],
+  });
+  assert.equal(next.status.kind, "running");
+});
+
+test("the same message delivered twice is not mistaken for repetition", () => {
+  const message = botMessage("alpha", "The presync hook is wedged on a shell wrapper.");
+  const state = makeState([participant("alpha"), participant("beta")], {
+    status: { kind: "running", speaker: botIdOf("alpha") },
+  });
+  const [once] = step(state, { kind: "turnCompleted", message });
+  const [twice, effects] = step(once, { kind: "turnCompleted", message });
+  assert.equal(twice.recent.length, 1, "a duplicate id must not be appended again");
+  assert.notEqual(twice.status.kind, "halted");
+  assert.ok(effects.some((e) => e.kind === "runTurn"));
+});
+
 test("a two-bot party always terminates inside its ceilings", () => {
   const run = simulate(makeState([participant("alpha", 0.9), participant("beta", 0.9)]), 200);
   assert.ok(run.iterations < 200, `party ran away: ${run.iterations} turns`);

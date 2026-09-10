@@ -22,6 +22,7 @@ export type Config = {
   readonly turnTimeoutMs: number;
   readonly permissionTimeoutMs: number;
   readonly dailyTokenCeiling: number;
+  readonly weeklyTokenCeiling: number;
   readonly webDist: string | null;
 };
 
@@ -40,6 +41,7 @@ export const loadConfig = (): Config => {
     turnTimeoutMs: int("HOWDY_TURN_TIMEOUT_MS", 180_000),
     permissionTimeoutMs: int("HOWDY_PERMISSION_TIMEOUT_MS", 120_000),
     dailyTokenCeiling: int("HOWDY_DAILY_TOKEN_CEILING", 2_000_000),
+    weeklyTokenCeiling: int("HOWDY_WEEKLY_TOKEN_CEILING", 10_000_000),
     webDist: webDist === undefined || webDist === "" ? null : resolve(webDist),
   };
 };

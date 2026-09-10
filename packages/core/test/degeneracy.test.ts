@@ -90,6 +90,16 @@ test("chatter fires on short toolless statements and not on questions", () => {
   assert.equal(detectChatter(asking).kind, "ok");
 });
 
+test("chatter holds fire on short messages that carry real specifics", () => {
+  const terse = [
+    botMessage("alpha", "Pinned the digest on payments-api."),
+    botMessage("beta", "Kubelet reserve is the culprit on arm workers."),
+    botMessage("alpha", "Sync wave zero races the namespace."),
+  ];
+  assert.equal(detectChatter(terse).kind, "ok");
+  assert.deepEqual(inspect(terse), { kind: "ok" });
+});
+
 test("chatter ignores short messages that used tools", () => {
   const working = [
     botMessage("alpha", "done", undefined, 2),

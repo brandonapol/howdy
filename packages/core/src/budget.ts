@@ -52,6 +52,14 @@ export const applyUsage = (budget: Budget, usage: Usage): Budget => ({
   tokensUsed: budget.tokensUsed + effectiveTokens(usage),
 });
 
+export const resetWindow = (budget: Budget, now: number): Budget => ({
+  ...budget,
+  turnsUsed: 0,
+  tokensUsed: 0,
+  startedAt: now,
+  now,
+});
+
 export const advanceClock = (budget: Budget, now: number): Budget =>
   now > budget.now ? { ...budget, now } : budget;
 

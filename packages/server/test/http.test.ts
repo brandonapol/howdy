@@ -151,15 +151,36 @@ test("the shared secret gates the api but never the health check", async () => {
   h.cleanup();
 });
 
-test("halt and panic both drain the queue and announce", async () => {
+test("halting a room that does not exist is reported, not silently ignored", async () => {
   const h = harness();
+  const res = await h.app.fetch(new Request("http://x/api/rooms/ghost/halt", { method: "POST" }));
+  assert.equal(res.status, 404);
+  h.cleanup();
+});
+
+test("halt stops a real room and panic announces across everything", async () => {
+  const h = harness();
+  const bot = h.bots.create({ name: "Sre" });
   const seen: string[] = [];
   h.bus.subscribe((e) => seen.push(e.event.kind));
-  const halted = await h.app.fetch(new Request("http://x/api/rooms/general/halt", { method: "POST" }));
+
+  const room = await h.app.fetch(
+    new Request("http://x/api/rooms", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "party", kind: "party", participants: [{ botId: bot.id }] }),
+    }),
+  );
+  const created = (await room.json()) as { id: string };
+
+  const halted = await h.app.fetch(
+    new Request(`http://x/api/rooms/${created.id}/halt`, { method: "POST" }),
+  );
   assert.equal(halted.status, 200);
+  assert.ok(seen.includes("halted"));
+
   const panicked = await h.app.fetch(new Request("http://x/api/panic", { method: "POST" }));
   assert.equal(panicked.status, 200);
-  assert.ok(seen.includes("halted"));
   assert.ok(seen.includes("announce"));
   h.cleanup();
 });

@@ -5,7 +5,7 @@ import { buildSystemPrompt, buildTurnPrompt, emptyUsage } from "@howdy/core";
 import type { Usage } from "@howdy/core";
 import type { Config } from "../config.js";
 import type { Db } from "../db/index.js";
-import { recordSpend, searchMessages, spendToday } from "../db/index.js";
+import { searchMessages, spendToday, spendWindow } from "../db/index.js";
 import type { EventBus } from "../events.js";
 import type { BotStore } from "../bots/store.js";
 import type { TurnQueue } from "../orchestrator/queue.js";
@@ -14,6 +14,7 @@ import type { RunTurnInput } from "../agent/run.js";
 import type { TurnOutcome } from "../agent/outcome.js";
 import { createPermissionBroker } from "../agent/permissions.js";
 import type { PermissionBroker } from "../agent/permissions.js";
+import { createOrchestrator } from "../orchestrator/rooms.js";
 
 export type RunTurn = (input: RunTurnInput) => Promise<TurnOutcome>;
 
@@ -80,6 +81,7 @@ export const createApp = (deps: AppDeps): Hono => {
   const runTurn = deps.runTurn ?? defaultRunTurn;
   const broker =
     deps.broker ?? createPermissionBroker(db, bus, config.permissionTimeoutMs);
+  const orchestrator = createOrchestrator({ config, db, bus, bots, queue, broker, runTurn });
   const app = new Hono();
 
   app.use("/api/*", async (c, next) => {
@@ -172,9 +174,47 @@ export const createApp = (deps: AppDeps): Hono => {
       : c.json({ error: "not found" }, 404),
   );
 
+  app.get("/api/rooms", (c) => c.json(orchestrator.list()));
+
+  app.post("/api/rooms", async (c) => {
+    const body = (await c.req.json()) as {
+      name?: string;
+      kind?: "solo" | "party";
+      goal?: string | null;
+      stepMode?: boolean;
+      ceilings?: Record<string, number>;
+      participants?: { botId: string; noisiness?: number; cooldownTurns?: number }[];
+      seed?: number;
+    };
+    if (typeof body.name !== "string" || body.name.trim() === "") {
+      return c.json({ error: "name is required" }, 400);
+    }
+    const room = orchestrator.create({
+      name: body.name.trim(),
+      kind: body.kind ?? "party",
+      goal: body.goal ?? null,
+      stepMode: body.stepMode === true,
+      ...(body.ceilings === undefined ? {} : { ceilings: body.ceilings }),
+      participants: body.participants ?? [],
+      ...(body.seed === undefined ? {} : { seed: body.seed }),
+    });
+    return c.json(room, 201);
+  });
+
+  app.get("/api/rooms/:id", (c) => {
+    const room = orchestrator.get(c.req.param("id"));
+    return room === null ? c.json({ error: "not found" }, 404) : c.json(room);
+  });
+
+  app.delete("/api/rooms/:id", (c) =>
+    orchestrator.remove(c.req.param("id"))
+      ? c.json({ ok: true })
+      : c.json({ error: "not found" }, 404),
+  );
+
   app.get("/api/rooms/:id/messages", (c) => {
     const roomId = c.req.param("id");
-    ensureRoom(db, roomId, roomId);
+    orchestrator.ensure(roomId);
     return c.json(listMessages(db, roomId));
   });
 
@@ -186,10 +226,9 @@ export const createApp = (deps: AppDeps): Hono => {
     const text = typeof body.text === "string" ? body.text.trim() : "";
     if (text === "") return c.json({ error: "text is required" }, 400);
 
-    const bot = typeof body.botId === "string" ? bots.get(body.botId) : null;
-    if (bot === null) return c.json({ error: "botId must name an existing bot" }, 400);
-
-    ensureRoom(db, roomId, roomId);
+    if (body.botId !== undefined && bots.get(body.botId) === null) {
+      return c.json({ error: "botId must name an existing bot" }, 400);
+    }
 
     const spend = spendToday(db);
     if (spend.tokens >= config.dailyTokenCeiling) {
@@ -198,89 +237,31 @@ export const createApp = (deps: AppDeps): Hono => {
         429,
       );
     }
+    const week = spendWindow(db, 7);
+    if (week.tokens >= config.weeklyTokenCeiling) {
+      return c.json(
+        { error: "weekly token ceiling reached", spend: week, ceiling: config.weeklyTokenCeiling },
+        429,
+      );
+    }
 
-    const history = listMessages(db, roomId);
-    const turnIndex = history.length;
-    const human = insertMessage(db, roomId, "human", null, text, turnIndex);
-    bus.publish({ kind: "message", roomId, message: human });
+    const room = orchestrator.ensure(roomId, body.botId);
+    if (room.participants.length === 0) {
+      return c.json({ error: "this room has no bots in it" }, 400);
+    }
 
-    const system = buildSystemPrompt(bot, bots.personality(bot), bots.memory(bot), {
-      roomName: roomId,
-      goal: null,
-      participants: [],
-      isParty: false,
-    });
+    orchestrator.post(roomId, text, body.botId);
+    return c.json({ ok: true }, 202);
+  });
 
-    const prompt = buildTurnPrompt(
-      [...history, human].map((m) => ({
-        id: m.id as never,
-        roomId: m.roomId as never,
-        speaker:
-          m.speakerKind === "human"
-            ? ({ kind: "human" } as const)
-            : m.speakerKind === "system"
-              ? ({ kind: "system" } as const)
-              : ({ kind: "bot", botId: (m.botId ?? "") as never } as const),
-        content: m.content,
-        turnIndex: m.turnIndex,
-        toolCallCount: m.toolCallCount,
-        usage: emptyUsage,
-        createdAt: m.createdAt,
-      })),
-      (id) => bots.get(id)?.name ?? "Bot",
-    );
+  app.post("/api/rooms/:id/resume", (c) => {
+    orchestrator.resume(c.req.param("id"));
+    return c.json({ ok: true });
+  });
 
-    queue
-      .submit({
-        key: `${roomId}:${bot.id}:${turnIndex}`,
-        run: async (signal) => {
-          bus.publish({ kind: "turnStarted", roomId, botId: String(bot.id) });
-          return runTurn({
-            prompt,
-            systemPrompt: system.text,
-            cwd: bot.workspacePath,
-            model: bot.model,
-            allowedTools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
-            maxTurns: 12,
-            signal,
-            canUseTool: broker.gateFor(bot, roomId),
-            onText: (chunk) =>
-              bus.publish({ kind: "chunk", roomId, botId: String(bot.id), text: chunk }),
-            onToolUse: (tool) =>
-              bus.publish({ kind: "toolUse", roomId, botId: String(bot.id), tool, summary: tool }),
-          });
-        },
-      })
-      .then((outcome) => {
-        const stored = insertMessage(
-          db, roomId, "bot", String(bot.id), outcome.text, turnIndex + 1,
-          outcome.toolCalls.length, outcome.usage, outcome.costUsd,
-        );
-        recordSpend(
-          db,
-          outcome.usage.inputTokens + outcome.usage.outputTokens,
-          outcome.costUsd,
-        );
-        bus.publish({ kind: "message", roomId, message: stored });
-        bus.publish({
-          kind: "turnFinished",
-          roomId,
-          botId: String(bot.id),
-          usage: outcome.usage,
-          costUsd: outcome.costUsd,
-        });
-        bus.publish({
-          kind: "spend",
-          tokensToday: spendToday(db).tokens,
-          ceiling: config.dailyTokenCeiling,
-        });
-      })
-      .catch((error: unknown) => {
-        const detail = error instanceof Error ? error.message : String(error);
-        bus.publish({ kind: "announce", roomId, text: `Turn failed: ${detail}` });
-      });
-
-    return c.json({ ok: true, message: human }, 202);
+  app.post("/api/rooms/:id/step", (c) => {
+    orchestrator.advance(c.req.param("id"));
+    return c.json({ ok: true });
   });
 
   app.get("/api/permissions", (c) => c.json(broker.pending()));
@@ -302,18 +283,14 @@ export const createApp = (deps: AppDeps): Hono => {
 
   app.post("/api/rooms/:id/halt", (c) => {
     const roomId = c.req.param("id");
+    if (orchestrator.get(roomId) === null) return c.json({ error: "no such room" }, 404);
+    const running = queue.depth();
     broker.cancelAll();
-    const stopped = queue.abortAll();
-    bus.publish({ kind: "halted", roomId, reason: { kind: "manual" } });
-    return c.json({ ok: true, stopped });
+    orchestrator.halt(roomId);
+    return c.json({ ok: true, stopped: Math.max(running, 1) });
   });
 
-  app.post("/api/panic", (c) => {
-    broker.cancelAll();
-    const stopped = queue.abortAll();
-    bus.publish({ kind: "announce", roomId: "*", text: "Panic: everything halted." });
-    return c.json({ ok: true, stopped });
-  });
+  app.post("/api/panic", (c) => c.json({ ok: true, stopped: orchestrator.panic() }));
 
   return app;
 };

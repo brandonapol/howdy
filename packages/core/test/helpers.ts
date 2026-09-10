@@ -23,6 +23,7 @@ export const participant = (
 ): ParticipantState => ({
   botId: botId(id),
   noisiness,
+  baseNoisiness: noisiness,
   cooldownTurns,
   lastSpokeAtTurn: null,
 });

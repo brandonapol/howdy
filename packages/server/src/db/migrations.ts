@@ -106,4 +106,10 @@ export const migrations: readonly string[] = [
     INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content);
   END;
   `,
+  `
+  ALTER TABLE rooms ADD COLUMN kind TEXT NOT NULL DEFAULT 'solo';
+  ALTER TABLE rooms ADD COLUMN decay_count INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE rooms ADD COLUMN pending_mentions TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE room_participants ADD COLUMN base_noisiness REAL NOT NULL DEFAULT 0.7;
+  `,
 ];

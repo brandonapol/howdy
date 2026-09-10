@@ -54,26 +54,42 @@ export const jaccard = (
   return shared / (a.size + b.size - shared);
 };
 
+const COMMON_OPENERS: ReadonlySet<string> = new Set([
+  "yes", "yeah", "yep", "no", "nope", "exactly", "totally", "absolutely",
+  "agreed", "indeed", "precisely", "right", "sure", "definitely", "certainly",
+  "the", "this", "that", "these", "those", "it", "its", "we", "you", "they",
+  "there", "here", "and", "but", "so", "then", "also", "just", "maybe",
+  "perhaps", "well", "okay", "ok", "thanks", "good", "great", "nice", "love",
+  "same", "true", "fair", "makes", "sounds", "looks", "seems", "both", "all",
+  "one", "two", "let", "lets", "our", "your", "their", "what", "when", "where",
+  "which", "who", "why", "how", "for", "with", "from", "into", "about", "after",
+  "before", "still", "again", "now", "not", "can", "could", "should", "would",
+  "will", "have", "has", "had", "was", "were", "been", "being", "does", "did",
+  "doing", "going", "want", "need", "think", "know", "see", "say", "said",
+]);
+
 const entities = (text: string): ReadonlySet<string> => {
   const out = new Set<string>();
+
   for (const m of text.matchAll(/`([^`]+)`/g)) {
     const v = m[1];
     if (v !== undefined) out.add(v.toLowerCase());
   }
-  for (const m of text.matchAll(/\b([A-Z][a-zA-Z0-9_.-]{2,})\b/g)) {
+
+  for (const m of text.matchAll(/\b[A-Za-z][A-Za-z0-9]*(?:[-_./][A-Za-z0-9]+)+\b/g)) {
+    out.add(m[0].toLowerCase());
+  }
+
+  for (const m of text.matchAll(/\b([A-Z][a-zA-Z0-9]{2,})\b/g)) {
     const v = m[1];
     if (v === undefined) continue;
-    const before = text.slice(0, m.index ?? 0).replace(/\s+$/, "");
-    const prev = before.at(-1);
-    const sentenceStart =
-      before.length === 0 || prev === "." || prev === "!" || prev === "?";
-    if (sentenceStart) continue;
-    out.add(v.toLowerCase());
+    const lower = v.toLowerCase();
+    if (COMMON_OPENERS.has(lower)) continue;
+    out.add(lower);
   }
-  for (const m of text.matchAll(/\b\d+(?:\.\d+)?\b/g)) {
-    const v = m[0];
-    out.add(v);
-  }
+
+  for (const m of text.matchAll(/\b\d+(?:\.\d+)?\b/g)) out.add(m[0]);
+
   return out;
 };
 
@@ -157,10 +173,23 @@ export const detectChatter = (
       !m.content.includes("?"),
   );
   if (!idle) return { kind: "ok" };
+
+  const seen = new Set<string>();
+  let introduced = 0;
+  for (const m of run) {
+    for (const e of entities(m.content)) {
+      if (!seen.has(e)) {
+        introduced += 1;
+        seen.add(e);
+      }
+    }
+  }
+  if (introduced > 0) return { kind: "ok" };
+
   return {
     kind: "decay",
     detector: "chatter",
-    detail: `${run.length} short messages with no tool use and no questions`,
+    detail: `${run.length} short messages with no tool use, no questions and nothing specific`,
   };
 };
 
