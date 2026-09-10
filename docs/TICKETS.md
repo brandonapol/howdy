@@ -305,14 +305,14 @@ deps: H-20, H-31
 
 ## M5 — Ship it
 
-### H-25 · systemd + install — `todo`
+### H-25 · systemd + install — `done`
 `ops/howdy.service` (user service, `Restart=on-failure`, memory cap),
 `ops/install.sh`, arm64 notes, `claude setup-token` walkthrough, LAN bind and
 shared-secret header.
 
 **Done when:** a reboot brings Howdy back with no keyboard involved.
 
-### H-26 · Backup & restore — `todo`
+### H-26 · Backup & restore — `done`
 `howdy backup` tars the SQLite file (via the online backup API, not `cp`) plus
 all bot directories. `howdy restore` puts it back. Weekly timer to a USB mount.
 

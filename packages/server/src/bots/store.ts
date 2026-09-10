@@ -45,7 +45,7 @@ type BotRow = {
   bot_dir: string; workspace_path: string; allowed_commands: string; enabled: number;
 };
 
-const toBot = (row: BotRow): Bot => ({
+const toBot = (row: BotRow, config: Config): Bot => ({
   id: botId(row.id),
   slug: row.slug,
   name: row.name,
@@ -54,8 +54,8 @@ const toBot = (row: BotRow): Bot => ({
   noisiness: row.noisiness,
   cooldownTurns: row.cooldown_turns,
   avatarColor: row.avatar_color,
-  botDir: row.bot_dir,
-  workspacePath: row.workspace_path,
+  botDir: join(config.botsDir, row.slug),
+  workspacePath: join(config.workspacesDir, row.slug),
   allowedCommands: JSON.parse(row.allowed_commands) as string[],
   enabled: row.enabled === 1,
 });
@@ -98,14 +98,14 @@ export const createBotStore = (db: Db, config: Config): BotStore => {
     existsSync(path) ? readFileSync(path, "utf8") : "";
 
   return {
-    list: () => (selectAll.all() as BotRow[]).map(toBot),
+    list: () => (selectAll.all() as BotRow[]).map((row) => toBot(row, config)),
     get: (id) => {
       const row = select.get(id) as BotRow | undefined;
-      return row === undefined ? null : toBot(row);
+      return row === undefined ? null : toBot(row, config);
     },
     bySlug: (slug) => {
       const row = selectSlug.get(slug) as BotRow | undefined;
-      return row === undefined ? null : toBot(row);
+      return row === undefined ? null : toBot(row, config);
     },
     create: (input) => {
       const name = input.name.trim() === "" ? "Bot" : input.name.trim();
@@ -141,7 +141,7 @@ export const createBotStore = (db: Db, config: Config): BotStore => {
         JSON.stringify(input.allowedCommands ?? DEFAULT_ALLOWED_COMMANDS),
         Date.now(),
       );
-      return toBot(select.get(id) as BotRow);
+      return toBot(select.get(id) as BotRow, config);
     },
     update: (id, patch) => {
       const row = select.get(id) as BotRow | undefined;
@@ -162,7 +162,7 @@ export const createBotStore = (db: Db, config: Config): BotStore => {
         patch.enabled === undefined ? row.enabled : patch.enabled ? 1 : 0,
         id,
       );
-      return toBot(select.get(id) as BotRow);
+      return toBot(select.get(id) as BotRow, config);
     },
     remove: (id) => db.prepare("DELETE FROM bots WHERE id = ?").run(id).changes > 0,
     personality: (bot) => read(join(bot.botDir, "personality.md")),

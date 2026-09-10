@@ -16,9 +16,9 @@ LAN-only. Runs on an ODROID.
 | M2 Identity & memory | bot dirs, `personality.md`, config UI, `remember`/`recall` tools, compaction — **done** |
 | M3 Tools & permissions | bash analyser, permission gate, approval UI — **done**; `gh` setup documented |
 | M4 The party | orchestrator, killswitch, governors, party UI — **done**; handoff, goals and the timeline outstanding |
-| M5 Ship it | planned |
+| M5 Ship it | systemd units, install script, backup and restore, ops docs — **done** |
 
-**292 tests green**, including 37 API end-to-end and 16 browser end-to-end. See [`docs/RESEARCH.md`](docs/RESEARCH.md) for how this
+**297 tests green**, including 42 API end-to-end and 16 browser end-to-end. See [`docs/RESEARCH.md`](docs/RESEARCH.md) for how this
 compares to Grok Bot and what the multi-agent literature says.
 
 Read [`docs/PLAN.md`](docs/PLAN.md) for the architecture and
@@ -30,7 +30,7 @@ Read [`docs/PLAN.md`](docs/PLAN.md) for the architecture and
 packages/core     pure domain — no I/O, no dependencies, all of it unit tested
 packages/server   Hono + SQLite + the Claude Agent SDK runner
 packages/web      React + Vite UI, hand-written CSS, no framework
-ops/              systemd unit and install notes                 (M5)
+ops/              systemd units, install script, ODROID notes
 ```
 
 `core` is where the party rules live. It is deliberately free of I/O so the

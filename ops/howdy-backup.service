@@ -1,0 +1,9 @@
+[Unit]
+Description=Howdy backup
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/howdy
+Environment=HOWDY_ROOT=%h/.howdy
+EnvironmentFile=-%h/.howdy/env
+ExecStart=/usr/bin/node %h/howdy/packages/server/dist/cli.js backup

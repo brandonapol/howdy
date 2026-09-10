@@ -1,0 +1,30 @@
+[Unit]
+Description=Howdy, a local bot party
+Documentation=https://github.com/brandonapol/howdy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/howdy
+ExecStart=/usr/bin/node %h/howdy/packages/server/dist/main.js
+Restart=on-failure
+RestartSec=5
+
+Environment=NODE_ENV=production
+Environment=HOWDY_ROOT=%h/.howdy
+Environment=HOWDY_HOST=0.0.0.0
+Environment=HOWDY_PORT=4747
+Environment=HOWDY_WEB_DIST=%h/howdy/packages/web/dist
+Environment=NODE_OPTIONS=--max-old-space-size=768
+EnvironmentFile=-%h/.howdy/env
+
+MemoryMax=1200M
+MemoryHigh=1000M
+TasksMax=256
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
