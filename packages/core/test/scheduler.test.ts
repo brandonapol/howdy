@@ -346,6 +346,61 @@ test("the same message delivered twice is not mistaken for repetition", () => {
   assert.ok(effects.some((e) => e.kind === "runTurn"));
 });
 
+test("a handoff queues the named bot for the next turn", () => {
+  const running = makeState([participant("alpha"), participant("beta", 0)], {
+    status: { kind: "running", speaker: botIdOf("alpha") },
+  });
+  const [queued, effects] = step(running, {
+    kind: "handoff",
+    to: botIdOf("beta"),
+    reason: "beta knows the migration",
+  });
+  assert.deepEqual(queued.pendingMentions, [botIdOf("beta")]);
+  assert.deepEqual(effects, [], "the current turn must not be interrupted");
+  assert.equal(queued.status.kind, "running");
+
+  const [, next] = step(queued, {
+    kind: "turnCompleted",
+    message: botMessage("alpha", "Handing this to beta, it owns the migration path."),
+  });
+  assert.equal(
+    next.find((e) => e.kind === "runTurn")?.speaker,
+    botIdOf("beta"),
+    "a silent bot must still take a handoff",
+  );
+});
+
+test("handing off to a bot that is not in the room is refused", () => {
+  const state = makeState([participant("alpha")], {
+    status: { kind: "running", speaker: botIdOf("alpha") },
+  });
+  const [next, effects] = step(state, {
+    kind: "handoff",
+    to: botIdOf("stranger"),
+    reason: "nope",
+  });
+  assert.deepEqual(next.pendingMentions, []);
+  assert.ok(effects.some((e) => e.kind === "announce"));
+});
+
+test("handing off twice to the same bot queues it once", () => {
+  const state = makeState([participant("alpha"), participant("beta")], {
+    status: { kind: "running", speaker: botIdOf("alpha") },
+  });
+  const once = step(state, { kind: "handoff", to: botIdOf("beta"), reason: "a" })[0];
+  const twice = step(once, { kind: "handoff", to: botIdOf("beta"), reason: "b" })[0];
+  assert.deepEqual(twice.pendingMentions, [botIdOf("beta")]);
+});
+
+test("a handoff in a halted room does nothing", () => {
+  const halted = makeState([participant("alpha"), participant("beta")], {
+    status: { kind: "halted", reason: { kind: "manual" } },
+  });
+  const [next, effects] = step(halted, { kind: "handoff", to: botIdOf("beta"), reason: "x" });
+  assert.deepEqual(next.pendingMentions, []);
+  assert.deepEqual(effects, []);
+});
+
 test("a two-bot party always terminates inside its ceilings", () => {
   const run = simulate(makeState([participant("alpha", 0.9), participant("beta", 0.9)]), 200);
   assert.ok(run.iterations < 200, `party ran away: ${run.iterations} turns`);

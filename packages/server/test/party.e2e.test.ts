@@ -375,3 +375,135 @@ test("the same seed produces the same party twice", async (t) => {
   assert.ok(a.length > 1, `expected several turns, saw ${a.length}`);
   assert.deepEqual(a, b, "a seeded party must be reproducible");
 });
+
+const callHandoff = async (
+  input: { mcpServers?: Record<string, unknown> },
+  args: { bot: string; reason: string },
+): Promise<string> => {
+  const server = input.mcpServers?.["howdy-room"] as
+    | { instance: { _registeredTools: Record<string, { handler: (a: unknown, e: unknown) => Promise<{ content: { text: string }[] }> }> } }
+    | undefined;
+  if (server === undefined) return "NO ROOM SERVER";
+  const handoff = server.instance._registeredTools["handoff"];
+  if (handoff === undefined) return "NO HANDOFF TOOL";
+  const result = await handoff.handler(args, {});
+  return result.content[0]?.text ?? "";
+};
+
+test("a bot can hand the next turn to a silent colleague", async (t) => {
+  const h = await startHowdy();
+  t.after(() => h.cleanup());
+  const [loud, quiet] = await cast(h, ["Loud", "Quiet"]);
+  assert.ok(loud !== undefined && quiet !== undefined);
+
+  const room = await h.post<{ id: string }>("/api/rooms", {
+    name: "handoff room",
+    kind: "party",
+    ceilings: { maxTurns: 4 },
+    participants: [
+      { botId: loud.id, noisiness: 1, cooldownTurns: 0 },
+      { botId: quiet.id, noisiness: 0, cooldownTurns: 0 },
+    ],
+  });
+
+  const stream = await openStream(h.url);
+  t.after(() => stream.close());
+
+  let handed = false;
+  let answer = "";
+  h.setScript(async (input) => {
+    if (!handed) {
+      handed = true;
+      answer = await callHandoff(input, { bot: "quiet", reason: "Quiet owns the migration" });
+      return {
+        text: "This is really Quiet's area, handing over.",
+        toolCalls: ["handoff"], usage: usage(100, 50), costUsd: 0,
+        sessionId: null, isError: false, detail: null,
+      };
+    }
+    return {
+      text: "Right, the migration image changed its entrypoint last Tuesday.",
+      toolCalls: [], usage: usage(100, 50), costUsd: 0,
+      sessionId: null, isError: false, detail: null,
+    };
+  });
+
+  await h.post(`/api/rooms/${room.id}/messages`, { text: "who owns the migration?" });
+  await sleep(2000);
+
+  assert.match(answer, /will take the next turn/);
+  const messages = await h.get<{ botId: string | null; speakerKind: string }[]>(
+    `/api/rooms/${room.id}/messages`,
+  );
+  assert.ok(
+    messages.some((m) => m.botId === quiet.id),
+    "a zero-noisiness bot must speak when handed to",
+  );
+});
+
+test("handing off to a bot outside the room is refused with the roster", async (t) => {
+  const h = await startHowdy();
+  t.after(() => h.cleanup());
+  const bots = await cast(h, ["Sre", "Dev"]);
+  await h.post("/api/bots", { name: "Outsider" });
+  const room = await party(h, bots, { ceilings: { maxTurns: 2 } });
+
+  let answer = "";
+  h.setScript(async (input) => {
+    if (answer === "") answer = await callHandoff(input, { bot: "outsider", reason: "nope" });
+    return {
+      text: "carrying on myself", toolCalls: [], usage: usage(10, 10), costUsd: 0,
+      sessionId: null, isError: false, detail: null,
+    };
+  });
+
+  await h.post(`/api/rooms/${room.id}/messages`, { text: "go" });
+  await sleep(1200);
+  assert.match(answer, /No bot called "outsider"/);
+  assert.match(answer, /Here: /);
+});
+
+test("a handoff still respects the killswitch and the ceilings", async (t) => {
+  const h = await startHowdy();
+  t.after(() => h.cleanup());
+  const bots = await cast(h, ["Sre", "Dev"]);
+  const room = await party(h, bots, { ceilings: { maxTurns: 2 } });
+  const stream = await openStream(h.url);
+  t.after(() => stream.close());
+
+  let n = 0;
+  h.setScript(async (input) => {
+    await callHandoff(input, { bot: "dev", reason: "over to you" });
+    const text = LINES[n % LINES.length] ?? "another point";
+    n += 1;
+    return {
+      text, toolCalls: [], usage: usage(10, 10), costUsd: 0,
+      sessionId: null, isError: false, detail: null,
+    };
+  });
+
+  await h.post(`/api/rooms/${room.id}/messages`, { text: "go" });
+  const halted = await stream.waitFor("halted", 15_000);
+  const reason = halted["reason"] as { kind: string; breach?: { kind: string } };
+  assert.equal(reason.kind, "budget");
+  assert.equal(reason.breach?.kind, "turns", "handoffs must not let a party outrun its ceiling");
+});
+
+test("a solo room is given no handoff tool at all", async (t) => {
+  const h = await startHowdy();
+  t.after(() => h.cleanup());
+  const bot = await h.post<{ id: string }>("/api/bots", { name: "Alone" });
+
+  let servers: string[] = [];
+  h.setScript(async (input) => {
+    servers = Object.keys(input.mcpServers ?? {});
+    return {
+      text: "just me", toolCalls: [], usage: usage(10, 10), costUsd: 0,
+      sessionId: null, isError: false, detail: null,
+    };
+  });
+  await h.post("/api/rooms/general/messages", { text: "hello", botId: bot.id });
+  await sleep(600);
+
+  assert.deepEqual(servers, ["howdy-memory"], "no colleagues means no handoff tool");
+});

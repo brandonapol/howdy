@@ -15,10 +15,10 @@ LAN-only. Runs on an ODROID.
 | M1 One bot, one room | server, DB, SSE, agent runner, queue, **UI — done** |
 | M2 Identity & memory | bot dirs, `personality.md`, config UI, `remember`/`recall` tools, compaction — **done** |
 | M3 Tools & permissions | bash analyser, permission gate, approval UI — **done**; `gh` setup documented |
-| M4 The party | orchestrator, killswitch, governors, party UI — **done**; handoff, goals and the timeline outstanding |
+| M4 The party | orchestrator, killswitch, governors, party UI, handoff, goal completion — **done**; the timeline view is outstanding |
 | M5 Ship it | systemd units, install script, backup and restore, ops docs — **done** |
 
-**297 tests green**, including 42 API end-to-end and 16 browser end-to-end. See [`docs/RESEARCH.md`](docs/RESEARCH.md) for how this
+**317 tests green**, including 58 API end-to-end and 16 browser end-to-end. See [`docs/RESEARCH.md`](docs/RESEARCH.md) for how this
 compares to Grok Bot and what the multi-agent literature says.
 
 Read [`docs/PLAN.md`](docs/PLAN.md) for the architecture and
@@ -82,7 +82,7 @@ set `HOWDY_CHROMIUM`.
 
 ## The safety rails
 
-Four independent things stop a party, in increasing order of politeness:
+Five independent things stop a party, in increasing order of politeness:
 
 1. **Killswitch** — aborts the in-flight subprocess. Button, `Esc Esc`, or `curl`.
 2. **Ceilings** — turns, effective tokens, wall clock, tool calls per turn, plus
@@ -91,6 +91,9 @@ Four independent things stop a party, in increasing order of politeness:
 3. **Detectors** — repetition, agreement cascades, and content-free chatter, all
    caught with cheap heuristics rather than a model call.
 4. **Noisiness** — a per-bot dial from lurker to motormouth.
+5. **Finishing** — a room given a goal is judged every few turns by a cheap
+   Haiku call, and stops when the goal is settled or when it is stuck and needs
+   you. "The bots are done" beats "the bots ran out of budget".
 
 Room ceilings mean *how far this may run unattended*. Speaking to a room resets
 the window, so solo chat never stalls and an unattended party is always bounded.

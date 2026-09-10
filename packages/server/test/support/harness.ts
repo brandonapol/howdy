@@ -9,8 +9,10 @@ import type { Bot } from "@howdy/core";
 import type { RunningServer } from "../../dist/server.js";
 import type { RunTurnInput } from "../../dist/agent/run.js";
 import type { TurnOutcome } from "../../dist/agent/outcome.js";
+import type { Verdict } from "../../dist/agent/judge.js";
 
 export type Script = (input: RunTurnInput) => Promise<TurnOutcome>;
+export type JudgeStub = (goal: string, transcript: readonly { content: string }[]) => Verdict;
 
 export const usage = (input = 400, output = 200) => ({
   inputTokens: input,
@@ -50,6 +52,7 @@ export const replies = (text: string, chunks = 3, delayMs = 5): Script =>
 export type Howdy = RunningServer & {
   readonly root: string;
   readonly setScript: (script: Script) => void;
+  readonly setJudge: (judge: JudgeStub) => void;
   readonly get: <T>(path: string) => Promise<T>;
   readonly post: <T>(path: string, body?: unknown) => Promise<T>;
   readonly cleanup: () => Promise<void>;
@@ -63,6 +66,7 @@ export const startHowdy = async (
   root = mkdtempSync(join(tmpdir(), "howdy-e2e-")),
 ): Promise<Howdy> => {
   let script: Script = replies("Howdy. Everything looks fine.");
+  let verdict: JudgeStub = () => ({ kind: "continue" });
 
   const server = await startServer({
     config: {
@@ -80,6 +84,7 @@ export const startHowdy = async (
       ...overrides,
     },
     runTurn: (input) => script(input),
+    judge: async (goal, transcript) => verdict(goal, transcript),
   });
 
   const call = async <T>(path: string, init?: RequestInit): Promise<T> => {
@@ -131,6 +136,9 @@ export const startHowdy = async (
     },
     setScript: (next) => {
       script = next;
+    },
+    setJudge: (next) => {
+      verdict = next;
     },
     get: (path) => call(path),
     post: (path, body) =>

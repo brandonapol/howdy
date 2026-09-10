@@ -260,7 +260,7 @@ that bug exactly.
 before it spawns a subprocess, in a different room from the first ten.
 deps: H-20
 
-### H-37 · Room goals and completion detection — `todo`
+### H-37 · Room goals and completion detection — `done`
 A room may carry a goal string. After each round, a cheap Haiku call judges
 whether the goal is met and returns `done | continue | stuck`. On `done`, the
 party stops and posts a summary.
@@ -273,7 +273,7 @@ done" is most of the perceived quality.
 fewer turns than its ceiling, and an open-ended room still ends on a ceiling.
 deps: H-20
 
-### H-33 · Agent-to-agent handoff — `todo`
+### H-33 · Agent-to-agent handoff — `done`
 A `handoff(botSlug, reason)` tool. The handoff is routed **through the
 scheduler** as a mention, never as a direct bot-to-bot channel — the research is
 clear that per-pair handoffs work for three agents and collapse beyond that, and

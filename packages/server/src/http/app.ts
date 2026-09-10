@@ -15,6 +15,7 @@ import type { TurnOutcome } from "../agent/outcome.js";
 import { createPermissionBroker } from "../agent/permissions.js";
 import type { PermissionBroker } from "../agent/permissions.js";
 import { createOrchestrator } from "../orchestrator/rooms.js";
+import type { Judge } from "../agent/judge.js";
 
 export type RunTurn = (input: RunTurnInput) => Promise<TurnOutcome>;
 
@@ -26,6 +27,7 @@ export type AppDeps = {
   readonly queue: TurnQueue;
   readonly runTurn?: RunTurn;
   readonly broker?: PermissionBroker;
+  readonly judge?: Judge;
 };
 
 type MessageRow = {
@@ -81,7 +83,10 @@ export const createApp = (deps: AppDeps): Hono => {
   const runTurn = deps.runTurn ?? defaultRunTurn;
   const broker =
     deps.broker ?? createPermissionBroker(db, bus, config.permissionTimeoutMs);
-  const orchestrator = createOrchestrator({ config, db, bus, bots, queue, broker, runTurn });
+  const orchestrator = createOrchestrator({
+    config, db, bus, bots, queue, broker, runTurn,
+    ...(deps.judge === undefined ? {} : { judge: deps.judge }),
+  });
   const app = new Hono();
 
   app.use("/api/*", async (c, next) => {

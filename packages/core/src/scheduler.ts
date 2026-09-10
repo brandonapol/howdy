@@ -136,6 +136,24 @@ export const step = (
   config: DegeneracyConfig = defaultDegeneracyConfig,
 ): Step => {
   switch (event.kind) {
+    case "handoff": {
+      if (state.status.kind === "halted") return [state, []];
+      const known = state.participants.some((p) => p.botId === event.to);
+      if (!known) {
+        return [state, [{ kind: "announce", text: `Cannot hand off: no such bot in this room.` }]];
+      }
+      if (state.pendingMentions.includes(event.to)) return [state, []];
+      return [
+        { ...state, pendingMentions: [...state.pendingMentions, event.to] },
+        [],
+      ];
+    }
+
+    case "goalReached":
+      return state.status.kind === "halted"
+        ? [state, []]
+        : halt(state, { kind: "complete", summary: event.summary });
+
     case "haltRequested":
       return state.status.kind === "halted"
         ? [state, []]
@@ -143,6 +161,12 @@ export const step = (
 
     case "resumeRequested": {
       if (state.status.kind !== "halted") return [state, []];
+      if (state.status.reason.kind === "complete") {
+        return [
+          state,
+          [{ kind: "announce", text: "This room already reached its goal." }],
+        ];
+      }
       if (state.status.reason.kind === "budget") {
         return [
           state,

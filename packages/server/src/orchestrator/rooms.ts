@@ -31,6 +31,9 @@ import type { TurnQueue } from "./queue.js";
 import type { PermissionBroker } from "../agent/permissions.js";
 import type { RunTurn } from "../http/app.js";
 import { createMemoryServer } from "../agent/memory.js";
+import { createJudge } from "../agent/judge.js";
+import { createRoomServer } from "../agent/roomtools.js";
+import type { Judge } from "../agent/judge.js";
 
 export type RoomRecord = {
   readonly id: string;
@@ -76,6 +79,7 @@ type Deps = {
   readonly queue: TurnQueue;
   readonly broker: PermissionBroker;
   readonly runTurn: RunTurn;
+  readonly judge?: Judge;
 };
 
 const rowToCeilings = (raw: string): Ceilings => {
@@ -88,7 +92,9 @@ const rowToCeilings = (raw: string): Ceilings => {
 
 export const createOrchestrator = (deps: Deps): Orchestrator => {
   const { config, db, bus, bots, queue, broker, runTurn } = deps;
+  const judge = deps.judge ?? createJudge();
   const states = new Map<string, RoomState>();
+  const judging = new Set<string>();
 
   const loadState = (id: string): RoomState | null => {
     const row = db.prepare("SELECT * FROM rooms WHERE id = ?").get(id) as
@@ -307,9 +313,11 @@ export const createOrchestrator = (deps: Deps): Orchestrator => {
     }
 
     const room = get(roomId);
-    const others = (room?.participants ?? [])
+    const cast = (room?.participants ?? [])
       .filter((id) => id !== String(speaker))
-      .map((id) => bots.get(id)?.name ?? "someone");
+      .map((id) => bots.get(id))
+      .filter((b): b is NonNullable<typeof b> => b !== null);
+    const others = cast.map((b) => b.name);
 
     const system = buildSystemPrompt(bot, bots.personality(bot), bots.memory(bot), {
       roomName: room?.name ?? roomId,
@@ -334,11 +342,29 @@ export const createOrchestrator = (deps: Deps): Orchestrator => {
             allowedTools: [
               "Bash", "Read", "Write", "Edit", "Glob", "Grep",
               "mcp__howdy-memory__remember", "mcp__howdy-memory__recall",
+              ...(cast.length > 0 ? ["mcp__howdy-room__handoff"] : []),
             ],
             maxTurns: 12,
             signal,
             canUseTool: broker.gateFor(bot, roomId),
-            mcpServers: { "howdy-memory": createMemoryServer(bot, roomId, { db, bus, bots }) },
+            mcpServers: {
+              "howdy-memory": createMemoryServer(bot, roomId, { db, bus, bots }),
+              ...(cast.length === 0
+                ? {}
+                : {
+                    "howdy-room": createRoomServer({
+                      roomId,
+                      speaker: bot,
+                      others: cast,
+                      handoff: (toBotId, reason) => {
+                        const before = stateOf(roomId)?.pendingMentions.length ?? 0;
+                        dispatch(roomId, { kind: "handoff", to: toBotId as never, reason });
+                        const after = stateOf(roomId)?.pendingMentions.length ?? 0;
+                        return after > before;
+                      },
+                    }),
+                  }),
+            },
             onText: (text) => bus.publish({ kind: "chunk", roomId, botId: String(speaker), text }),
             onToolUse: (tool) =>
               bus.publish({ kind: "toolUse", roomId, botId: String(speaker), tool, summary: tool }),
@@ -361,11 +387,41 @@ export const createOrchestrator = (deps: Deps): Orchestrator => {
           ceiling: config.dailyTokenCeiling,
         });
         dispatch(roomId, { kind: "turnCompleted", message });
+        void assess(roomId);
       })
       .catch((error: unknown) => {
         const detail = error instanceof Error ? error.message : String(error);
         dispatch(roomId, { kind: "turnFailed", speaker, detail });
       });
+  };
+
+  const assess = async (roomId: string): Promise<void> => {
+    const room = get(roomId);
+    const goal = room?.goal ?? null;
+    if (goal === null || goal.trim() === "") return;
+
+    const state = stateOf(roomId);
+    if (state === null || state.status.kind === "halted") return;
+    if (state.budget.turnsUsed % config.goalCheckEvery !== 0) return;
+    if (judging.has(roomId)) return;
+
+    judging.add(roomId);
+    try {
+      const verdict = await judge(goal, recentMessages(roomId), new AbortController().signal);
+      const current = stateOf(roomId);
+      if (current === null || current.status.kind === "halted") return;
+      if (verdict.kind === "done") {
+        saveMessage(roomId, "system", null, `Goal reached: ${verdict.summary}`, current.turnIndex);
+        dispatch(roomId, { kind: "goalReached", summary: verdict.summary });
+      } else if (verdict.kind === "stuck") {
+        saveMessage(roomId, "system", null, `Stuck: ${verdict.summary}`, current.turnIndex);
+        dispatch(roomId, { kind: "goalReached", summary: `stuck — ${verdict.summary}` });
+      }
+    } catch {
+      return;
+    } finally {
+      judging.delete(roomId);
+    }
   };
 
   const get = (id: string): RoomRecord | null => {

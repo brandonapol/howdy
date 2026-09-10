@@ -10,10 +10,12 @@ import { createBotStore } from "./bots/store.js";
 import { createTurnQueue } from "./orchestrator/queue.js";
 import { createApp } from "./http/app.js";
 import type { RunTurn } from "./http/app.js";
+import type { Judge } from "./agent/judge.js";
 
 export type StartOptions = {
   readonly config?: Partial<Config>;
   readonly runTurn?: RunTurn;
+  readonly judge?: Judge;
 };
 
 export type RunningServer = {
@@ -44,6 +46,7 @@ export const startServer = async (options: StartOptions = {}): Promise<RunningSe
     bots,
     queue,
     ...(options.runTurn === undefined ? {} : { runTurn: options.runTurn }),
+    ...(options.judge === undefined ? {} : { judge: options.judge }),
   });
 
   if (config.webDist !== null) app.use("/*", serveStatic({ root: config.webDist }));

@@ -94,6 +94,7 @@ export type Breach = {
 
 export type HaltReason =
   | { readonly kind: "manual" }
+  | { readonly kind: "complete"; readonly summary: string }
   | { readonly kind: "budget"; readonly breach: Breach }
   | { readonly kind: "degeneracy"; readonly detector: string; readonly detail: string }
   | { readonly kind: "error"; readonly detail: string };
@@ -129,6 +130,8 @@ export type RoomEvent =
   | { readonly kind: "humanMessage"; readonly message: RoomMessage; readonly mentions: readonly BotId[] }
   | { readonly kind: "turnCompleted"; readonly message: RoomMessage }
   | { readonly kind: "turnFailed"; readonly speaker: BotId; readonly detail: string }
+  | { readonly kind: "handoff"; readonly to: BotId; readonly reason: string }
+  | { readonly kind: "goalReached"; readonly summary: string }
   | { readonly kind: "haltRequested" }
   | { readonly kind: "resumeRequested" }
   | { readonly kind: "stepRequested" }
