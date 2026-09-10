@@ -1,0 +1,256 @@
+# Howdy — tickets
+
+Sized so each is one sitting. `deps` are hard ordering constraints; anything
+without a shared dep can be done in any order.
+
+Status: `todo` · `wip` · `done`
+
+---
+
+## M0 — Foundations
+
+### H-1 · Monorepo scaffold — `done`
+npm workspaces: `packages/core`, `packages/server`, `packages/web`. Strict TS
+(`strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`), ESM
+throughout, `node:test` as the runner (no Jest — it is heavy on an ODROID and we
+need zero extra native deps). Root scripts: `build`, `test`, `dev`, `typecheck`.
+
+**Done when:** `npm test` and `npm run typecheck` pass green on an empty suite.
+
+### H-2 · Core domain types — `done`
+`packages/core/src/types.ts`. `Bot`, `Room`, `RoomMessage`, `RoomState`,
+`Budget`, `TurnRecord`, `Usage`, `Effect`, `RoomEvent`. All `readonly`. No
+classes, no I/O, no imports outside `core`.
+
+**Done when:** types compile and `core` has an empty `dependencies` block.
+
+### H-3 · Budget arithmetic — `done`
+`packages/core/src/budget.ts`. Pure: `applyUsage`, `remaining`, `exceeded`
+returning the *first* breached ceiling, `describeBreach`. Guard against negative
+and `NaN` token counts coming back from a truncated SDK result.
+
+**Done when:** unit tests cover each ceiling, plus the zero/negative edges.
+deps: H-2
+
+### H-4 · Turn scheduler — `done`
+`packages/core/src/scheduler.ts`. The heart of it.
+`step(state, event) => [state, effects]`, total and pure, with an injected seeded
+RNG. Implements: weighted round-robin, `@mention` override, no-double-turn,
+per-bot cooldown, noisiness roll, budget checks, halt propagation, idle-on-stall.
+
+**Done when:** a seeded 200-turn simulation is deterministic and terminates, and
+tests cover mention override, cooldown, stall, and each halt reason.
+deps: H-2, H-3
+
+### H-5 · Degeneracy detectors — `done`
+`packages/core/src/degeneracy.ts`. Pure heuristics over recent messages:
+trigram Jaccard repetition, agreement cascade, low-substance chatter. Each
+returns a verdict plus a human-readable reason. No model calls, ever.
+
+**Done when:** tests use real transcripts of a good conversation (must not fire)
+and a degenerate one (must fire within 4 messages).
+deps: H-2
+
+### H-6 · Prompt assembly — `todo`
+`packages/core/src/prompt.ts`. `buildSystemPrompt(bot, memory, roomCtx)` and
+`buildTurnPrompt(recent, speaker)`. Stable content first for cache hits; the
+volatile transcript last. Emits the cache breakpoint position rather than calling
+the API itself.
+
+**Done when:** snapshot tests prove the prefix is byte-identical across two turns
+that differ only in transcript.
+deps: H-2
+
+---
+
+## M1 — One bot, one room
+
+### H-7 · SQLite schema + migrations — `todo`
+`packages/server/src/db/`. Tables: `bots`, `rooms`, `room_participants`,
+`messages`, `turns`, `permissions`. FTS5 virtual table over `messages.content`.
+WAL, `synchronous=NORMAL`, `busy_timeout`. Forward-only numbered migrations.
+
+**Done when:** migrations run twice with no error, and FTS5 returns a hit.
+
+### H-8 · Hono server + SSE event bus — `todo`
+`packages/server/src/http/`. `GET /api/stream` SSE with heartbeat and
+`Last-Event-ID` replay from a bounded ring buffer. Typed event union shared from
+`core`. Serves the built web bundle in production.
+
+**Done when:** two browser tabs both receive an event published from a REPL, and
+a killed tab does not leak a listener.
+deps: H-2
+
+### H-9 · Agent runner — `todo`
+`packages/server/src/agent/run.ts`. Wraps `query()` from
+`@anthropic-ai/claude-agent-sdk`. Owns the `AbortController` registry, translates
+`SDKMessage` into domain events, extracts usage from the result message, and
+guarantees the controller is unregistered in a `finally`.
+
+**Verify the real SDK types against `node_modules/@anthropic-ai/claude-agent-sdk`
+before writing this — do not trust the docs summary or memory.**
+
+**Done when:** a bot answers "say howdy" end to end, and `abort()` mid-turn kills
+the subprocess within 2s.
+deps: H-8
+
+### H-10 · Turn queue — `todo`
+`packages/server/src/orchestrator/queue.ts`. Concurrency 1. Serializes every
+agent turn process-wide, surfaces queue depth as an event, drains cleanly on
+shutdown. This is the thing standing between a bot party and 4GB of swap death.
+
+**Done when:** ten concurrent turn requests execute strictly in sequence and a
+mid-queue halt drops the pending ones.
+deps: H-9
+
+### H-11 · Chat UI — `todo`
+`packages/web`. React + Vite + Tailwind. Room view with streamed messages, bot
+sidebar, composer. Consumes the SSE stream via a typed hook with reconnect.
+
+**Done when:** you can hold a real conversation with one bot in a browser.
+deps: H-8, H-9
+
+---
+
+## M2 — Identity & memory
+
+### H-12 · Bot store — `todo`
+`packages/server/src/bots/`. CRUD over SQLite plus the on-disk directory
+(`personality.md`, `memory.md`, `notes/`, workspace). Creating a bot scaffolds
+the directory from a template; deleting archives rather than removes. A file
+watcher reloads `personality.md` when you edit it in vim.
+
+**Done when:** editing `personality.md` on disk changes the next turn's behaviour
+with no restart.
+deps: H-7
+
+### H-13 · `remember` MCP tool — `todo`
+An in-process MCP server exposing `remember(fact, tags)` which appends a
+timestamped line to the bot's `memory.md`, and `recall(query)` backed by FTS5.
+Wired into the agent runner's `mcpServers`.
+
+**Done when:** a bot told a fact in room A cites it unprompted in room B.
+deps: H-9, H-12
+
+### H-14 · Memory compaction — `todo`
+Background pass triggered when `memory.md` exceeds a token threshold. Rewrites to
+deduplicated bullets via a single cheap model call, keeps a timestamped backup,
+never runs while a turn is in flight.
+
+**Done when:** a 200-line memory file compacts without losing any fact asserted
+in a fixture test.
+deps: H-13
+
+### H-15 · Bot config UI — `todo`
+Editor for name, model, effort, noisiness, cooldown, avatar colour, tool
+allowlist, and a Markdown editor for `personality.md` with a live token count.
+
+**Done when:** a bot can be created and given a personality without touching a
+terminal.
+deps: H-11, H-12
+
+---
+
+## M3 — Tools & permissions
+
+### H-16 · Bash command parser + allowlist — `todo`
+`packages/core/src/bash.ts`. Pure. Splits on pipes, `&&`, `||`, `;`, command
+substitution; extracts each invoked binary; classifies against allow/deny lists.
+Denylist covers `rm -rf /`, `curl|sh`, `dd`, `mkfs`, fork bombs, and history
+rewrites on shared branches.
+
+**Done when:** a fixture table of ~60 commands classifies correctly, including
+the nasty nested-substitution cases.
+deps: H-2
+
+### H-17 · Permission gate — `todo`
+`packages/server/src/agent/permissions.ts`. `canUseTool` implementation:
+allowlist for Bash, workspace containment (with symlink resolution) for file
+tools, SSE prompt for everything else, 120s timeout defaulting to deny,
+"always allow" persisted per bot.
+
+**Done when:** a bot is refused `cat /etc/shadow`, allowed `gh pr list`, and an
+unattended unknown tool denies on timeout rather than hanging.
+deps: H-9, H-16
+
+### H-18 · Permission prompt UI — `todo`
+Modal showing the bot, the tool, the exact command, and approve / deny / always.
+Keyboard-driven. Queues if several arrive.
+
+**Done when:** you can approve a `gh` call from your phone on the LAN.
+deps: H-11, H-17
+
+### H-19 · GitHub CLI enablement — `todo`
+Document and script `gh auth login` on the ODROID under the service account,
+confirm the bots inherit the token, add a `gh`-shaped smoke test.
+
+**Done when:** a bot opens a draft PR on a scratch repo unaided.
+deps: H-17
+
+---
+
+## M4 — The party
+
+### H-20 · Orchestrator wiring — `todo`
+`packages/server/src/orchestrator/`. Binds the pure `step()` to real effects:
+enqueue turn, persist message, emit SSE, halt. The impure shell stays thin — if
+logic creeps in here instead of `core`, it stops being testable.
+
+**Done when:** a two-bot room runs to a natural stop with no human input.
+deps: H-4, H-5, H-10
+
+### H-21 · Killswitch — `todo`
+Per-room halt and global panic. Aborts in-flight turns, drains the queue, marks
+the room, posts a system message. Big red button, `Esc Esc` shortcut, and a
+`POST /api/panic` you can `curl` from anywhere on the LAN.
+
+**Done when:** a running party stops within 2s, subprocess included, measured.
+deps: H-20
+
+### H-22 · Budget meter UI — `todo`
+Live tokens/turns/wall-clock against ceilings, per room. Goes amber at 75%,
+red at 90%. Shows which ceiling stopped a halted party.
+
+**Done when:** the meter matches the SQLite `turns` totals exactly.
+deps: H-11, H-20
+
+### H-23 · Party controls — `todo`
+Room composer: pick participants, set per-bot noisiness, ceilings, a topic seed,
+and step mode. Save as reusable presets.
+
+**Done when:** a saved preset reproduces the same party shape twice.
+deps: H-15, H-20
+
+### H-24 · Party observability — `todo`
+Timeline view: who spoke, what it cost, which rule fired, why the party stopped.
+The thing you actually read when a party goes weird.
+
+**Done when:** every halt reason from H-4 renders with its trigger.
+deps: H-22
+
+---
+
+## M5 — Ship it
+
+### H-25 · systemd + install — `todo`
+`ops/howdy.service` (user service, `Restart=on-failure`, memory cap),
+`ops/install.sh`, arm64 notes, `claude setup-token` walkthrough, LAN bind and
+shared-secret header.
+
+**Done when:** a reboot brings Howdy back with no keyboard involved.
+
+### H-26 · Backup & restore — `todo`
+`howdy backup` tars the SQLite file (via the online backup API, not `cp`) plus
+all bot directories. `howdy restore` puts it back. Weekly timer to a USB mount.
+
+**Done when:** a restore onto a blank box reproduces every bot and transcript.
+deps: H-25
+
+---
+
+## M6 — Polish
+
+### H-27 · Transcript export — `todo` — Markdown/JSON export per room.
+### H-28 · Bot cloning — `todo` — fork a bot with its personality, fresh memory.
+### H-29 · Mobile layout — `todo` — the LAN phone case is the real remote control.
+### H-30 · Idle chatter mode — `todo` — bots occasionally start their own party on a cron, under a tight daily budget. Fun, and the single most dangerous feature here, so it lands last and off by default.
