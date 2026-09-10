@@ -1,5 +1,5 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { CanUseTool } from "@anthropic-ai/claude-agent-sdk";
+import type { CanUseTool, McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
 import type { AgentFrame, TurnOutcome } from "./outcome.js";
 import { emptyOutcome, foldFrame } from "./outcome.js";
 
@@ -14,6 +14,7 @@ export type RunTurnInput = {
   readonly maxTurns: number;
   readonly signal: AbortSignal;
   readonly canUseTool?: CanUseTool;
+  readonly mcpServers?: Record<string, McpServerConfig>;
   readonly onText?: (text: string) => void;
   readonly onToolUse?: (tool: string) => void;
 };
@@ -42,6 +43,7 @@ export const runTurn = async (input: RunTurnInput): Promise<TurnOutcome> => {
         ? {}
         : { disallowedTools: [...input.disallowedTools] }),
       ...(input.canUseTool === undefined ? {} : { canUseTool: input.canUseTool }),
+      ...(input.mcpServers === undefined ? {} : { mcpServers: input.mcpServers }),
       ...(input.resume === undefined ? {} : { resume: input.resume }),
       maxTurns: input.maxTurns,
       settingSources: [],

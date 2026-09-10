@@ -167,6 +167,19 @@ test("halting a room clears its pending prompts but not another room's", () => {
   assert.deepEqual(s.permissions.map((p) => p.id), ["p2"]);
 });
 
+test("a bot writing to memory shows up as a notice", () => {
+  const s = applyEvent(initialState, {
+    kind: "remembered",
+    roomId: "general",
+    botId: "b1",
+    fact: "the prod cluster is prod-eu",
+    total: 4,
+  });
+  assert.equal(s.notices.length, 1);
+  assert.match(s.notices[0]?.text ?? "", /Remembered: the prod cluster is prod-eu/);
+  assert.equal(s.notices[0]?.tone, "info");
+});
+
 test("spend and queue depth flow into the meters", () => {
   let s = initialState;
   s = applyEvent(s, { kind: "spend", tokensToday: 1234, ceiling: 5000 });

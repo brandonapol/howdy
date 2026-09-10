@@ -127,7 +127,7 @@ deps: H-10
 
 ## M2 — Identity & memory
 
-### H-12 · Bot store — `todo`
+### H-12 · Bot store — `done`
 `packages/server/src/bots/`. CRUD over SQLite plus the on-disk directory
 (`personality.md`, `memory.md`, `notes/`, workspace). Creating a bot scaffolds
 the directory from a template; deleting archives rather than removes. A file
@@ -137,7 +137,7 @@ watcher reloads `personality.md` when you edit it in vim.
 with no restart.
 deps: H-7
 
-### H-13 · `remember` MCP tool — `todo`
+### H-13 · `remember` MCP tool — `done`
 An in-process MCP server exposing `remember(fact, tags)` which appends a
 timestamped line to the bot's `memory.md`, and `recall(query)` backed by FTS5.
 Wired into the agent runner's `mcpServers`.
@@ -145,10 +145,16 @@ Wired into the agent runner's `mcpServers`.
 **Done when:** a bot told a fact in room A cites it unprompted in room B.
 deps: H-9, H-12
 
-### H-14 · Memory compaction — `todo`
-Background pass triggered when `memory.md` exceeds a token threshold. Rewrites to
-deduplicated bullets via a single cheap model call, keeps a timestamped backup,
-never runs while a turn is in flight.
+### H-14 · Memory compaction — `done`
+Runs after every `remember`. Deduplicates restatements (newest wording wins),
+trims the oldest entries past a 200-fact cap, and archives everything it drops
+to `memory.archive.md` rather than deleting it.
+
+Built as a pure function with **no model call** — the plan called for a cheap
+Haiku pass, but exact-restatement dedupe plus a cap covers the real growth
+case, costs nothing, runs instantly on an ODROID, and is deterministic enough
+to test. The tradeoff is no semantic merging: "the cluster is prod-eu" and
+"we deploy to prod-eu" both survive. Revisit if memory files get noisy.
 
 **Done when:** a 200-line memory file compacts without losing any fact asserted
 in a fixture test.

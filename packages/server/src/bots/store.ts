@@ -30,6 +30,13 @@ to do. This file is yours to edit; the bot never writes to it.
 
 Standing context this bot should always have: your infrastructure, your naming
 conventions, the repos it should care about.
+
+## Memory
+
+You have two memory tools. Use \`remember\` for durable facts worth keeping
+after this conversation ends, and \`recall\` before asking something you may
+already have been told. Remembered facts live in memory.md next to this file,
+which you may edit by hand at any time.
 `;
 
 type BotRow = {

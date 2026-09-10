@@ -5,6 +5,7 @@ import { loadConfig } from "./config.js";
 import type { Config } from "./config.js";
 import { openDb } from "./db/index.js";
 import { createEventBus } from "./events.js";
+import type { EventBus } from "./events.js";
 import { createBotStore } from "./bots/store.js";
 import { createTurnQueue } from "./orchestrator/queue.js";
 import { createApp } from "./http/app.js";
@@ -19,6 +20,7 @@ export type RunningServer = {
   readonly url: string;
   readonly port: number;
   readonly config: Config;
+  readonly bus: EventBus;
   readonly stop: () => Promise<void>;
 };
 
@@ -59,6 +61,7 @@ export const startServer = async (options: StartOptions = {}): Promise<RunningSe
     url: `http://127.0.0.1:${port}`,
     port,
     config,
+    bus,
     stop: async () => {
       queue.abortAll();
       await queue.drain().catch(() => undefined);

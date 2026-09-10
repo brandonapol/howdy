@@ -30,6 +30,7 @@ import type { BotStore } from "../bots/store.js";
 import type { TurnQueue } from "./queue.js";
 import type { PermissionBroker } from "../agent/permissions.js";
 import type { RunTurn } from "../http/app.js";
+import { createMemoryServer } from "../agent/memory.js";
 
 export type RoomRecord = {
   readonly id: string;
@@ -330,10 +331,14 @@ export const createOrchestrator = (deps: Deps): Orchestrator => {
             systemPrompt: system.text,
             cwd: bot.workspacePath,
             model: bot.model,
-            allowedTools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
+            allowedTools: [
+              "Bash", "Read", "Write", "Edit", "Glob", "Grep",
+              "mcp__howdy-memory__remember", "mcp__howdy-memory__recall",
+            ],
             maxTurns: 12,
             signal,
             canUseTool: broker.gateFor(bot, roomId),
+            mcpServers: { "howdy-memory": createMemoryServer(bot, roomId, { db, bus, bots }) },
             onText: (text) => bus.publish({ kind: "chunk", roomId, botId: String(speaker), text }),
             onToolUse: (tool) =>
               bus.publish({ kind: "toolUse", roomId, botId: String(speaker), tool, summary: tool }),

@@ -192,6 +192,14 @@ export const applyEvent = (state: UiState, event: HowdyEvent): UiState => {
       });
     }
 
+    case "remembered":
+      return addNotice(state, {
+        id: `mem-${state.lastEventId}`,
+        roomId: event.roomId,
+        text: `Remembered: ${event.fact}`,
+        tone: "info",
+      });
+
     case "queueDepth":
       return { ...state, queueDepth: event.depth };
 

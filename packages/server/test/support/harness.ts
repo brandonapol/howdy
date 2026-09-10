@@ -2,6 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../../dist/server.js";
+import { openDb } from "../../dist/db/index.js";
+import { createBotStore } from "../../dist/bots/store.js";
+import { recallFor, rememberFor } from "../../dist/agent/memory.js";
+import type { Bot } from "@howdy/core";
 import type { RunningServer } from "../../dist/server.js";
 import type { RunTurnInput } from "../../dist/agent/run.js";
 import type { TurnOutcome } from "../../dist/agent/outcome.js";
@@ -49,6 +53,9 @@ export type Howdy = RunningServer & {
   readonly get: <T>(path: string) => Promise<T>;
   readonly post: <T>(path: string, body?: unknown) => Promise<T>;
   readonly cleanup: () => Promise<void>;
+  readonly bot: (slug: string) => Bot;
+  readonly remember: (slug: string, fact: string, tags?: readonly string[]) => string;
+  readonly recall: (slug: string, query: string) => string;
 };
 
 export const startHowdy = async (
@@ -88,9 +95,40 @@ export const startHowdy = async (
     return body;
   };
 
+  const peek = () => {
+    const db = openDb(join(root, "howdy.db"));
+    const bots = createBotStore(db, server.config);
+    return { db, bots, bus: server.bus };
+  };
+
+  const botBySlug = (slug: string): Bot => {
+    const { bots, db } = peek();
+    const found = bots.bySlug(slug);
+    db.close();
+    if (found === null) throw new Error(`no bot with slug ${slug}`);
+    return found;
+  };
+
   return {
     ...server,
     root,
+    bot: botBySlug,
+    remember: (slug, fact, tags = []) => {
+      const ctx = peek();
+      const bot = ctx.bots.bySlug(slug);
+      if (bot === null) throw new Error(`no bot with slug ${slug}`);
+      const out = rememberFor(bot, "test", ctx)(fact, tags);
+      ctx.db.close();
+      return out;
+    },
+    recall: (slug, query) => {
+      const ctx = peek();
+      const bot = ctx.bots.bySlug(slug);
+      if (bot === null) throw new Error(`no bot with slug ${slug}`);
+      const out = recallFor(bot, ctx)(query);
+      ctx.db.close();
+      return out;
+    },
     setScript: (next) => {
       script = next;
     },

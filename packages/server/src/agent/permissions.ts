@@ -155,6 +155,8 @@ export const createPermissionBroker = (
         return ask(bot, roomId, "Bash", rule, command, options.signal);
       }
 
+      if (toolName.startsWith("mcp__howdy-memory__")) return allow();
+
       const raw = pathFrom(input);
       if (raw !== null) {
         const target = settledPath(raw, bot.workspacePath);
