@@ -1,0 +1,340 @@
+import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+import { resolve } from "node:path";
+import type { Browser } from "playwright";
+import { startHowdy, replies, sleep, usage } from "../../server/test/support/harness.ts";
+import type { Howdy } from "../../server/test/support/harness.ts";
+import { launch, openApp } from "./support/browser.ts";
+
+const WEB_DIST = resolve(import.meta.dirname, "..", "dist");
+
+let browser: Browser;
+before(async () => {
+  browser = await launch();
+});
+after(async () => {
+  await browser.close();
+});
+
+const stage = async (): Promise<Howdy> =>
+  startHowdy({ webDist: WEB_DIST });
+
+test("the app loads, lists bots, and reports a live connection", async (t) => {
+  const h = await stage();
+  t.after(() => h.cleanup());
+  await h.post("/api/bots", { name: "Sre" });
+  await h.post("/api/bots", { name: "Dev" });
+
+  const app = await openApp(browser, h.url);
+  t.after(() => app.close());
+
+  await app.page.waitForSelector(".bot");
+  assert.deepEqual(await app.page.locator(".bot .name").allTextContents(), ["Dev", "Sre"]);
+  await app.page.waitForSelector(".dot.open", { timeout: 5000 });
+  assert.match((await app.page.locator(".meter .label").textContent()) ?? "", /tokens today/);
+  assert.deepEqual(app.errors, []);
+});
+
+test("sending a message streams the reply and then settles into the transcript", async (t) => {
+  const h = await stage();
+  t.after(() => h.cleanup());
+  await h.post("/api/bots", { name: "Sre" });
+
+  const app = await openApp(browser, h.url);
+  t.after(() => app.close());
+  await app.page.waitForSelector(".dot.open");
+
+  h.setScript(replies("The presync hook is stuck on a shell wrapper that never execs.", 8, 150));
+  await app.page.locator("textarea").fill("why is the deploy stuck?");
+  await app.page.locator("textarea").press("Enter");
+
+  await app.page.waitForSelector(".msg.human", { timeout: 5000 });
+  assert.match((await app.page.locator(".msg.human .body").textContent()) ?? "", /why is the deploy stuck/);
+
+  await app.page.waitForSelector(".cursor", { timeout: 5000 });
+  await app.page.waitForFunction(
+    () => document.querySelectorAll(".msg.bot").length > 0 && !document.querySelector(".cursor"),
+    undefined,
+    { timeout: 10000 },
+  );
+
+  assert.match(
+    (await app.page.locator(".msg.bot .body").last().textContent()) ?? "",
+    /never execs/,
+  );
+  assert.deepEqual(app.errors, []);
+});
+
+test("the token meter moves after a turn is paid for", async (t) => {
+  const h = await stage();
+  t.after(() => h.cleanup());
+  await h.post("/api/bots", { name: "Sre" });
+  const app = await openApp(browser, h.url);
+  t.after(() => app.close());
+  await app.page.waitForSelector(".dot.open");
+
+  const before = (await app.page.locator(".meter .label").textContent()) ?? "";
+  h.setScript(replies("done"));
+  await app.page.locator("textarea").fill("go");
+  await app.page.locator("textarea").press("Enter");
+  await app.page.waitForFunction(
+    (previous) => (document.querySelector(".meter .label")?.textContent ?? "") !== previous,
+    before,
+    { timeout: 10000 },
+  );
+  assert.match((await app.page.locator(".meter .label").textContent()) ?? "", /600/);
+});
+
+test("a permission prompt appears and approving it lets the turn finish", async (t) => {
+  const h = await stage();
+  t.after(() => h.cleanup());
+  await h.post("/api/bots", { name: "Sre" });
+  const app = await openApp(browser, h.url);
+  t.after(() => app.close());
+  await app.page.waitForSelector(".dot.open");
+
+  h.setScript(async (input) => {
+    const decision = await input.canUseTool?.(
+      "Bash",
+      { command: "terraform apply -auto-approve" },
+      { signal: input.signal },
+    );
+    return {
+      text: decision?.behavior === "allow" ? "terraform applied cleanly" : "stood down",
+      toolCalls: [],
+      usage: usage(10, 10),
+      costUsd: 0,
+      sessionId: null,
+      isError: false,
+      detail: null,
+    };
+  });
+
+  await app.page.locator("textarea").fill("apply the plan");
+  await app.page.locator("textarea").press("Enter");
+
+  await app.page.waitForSelector(".prompt", { timeout: 8000 });
+  assert.match((await app.page.locator(".prompt h2").textContent()) ?? "", /Sre wants to run Bash/);
+  assert.match((await app.page.locator(".prompt .command").textContent()) ?? "", /terraform apply -auto-approve/);
+
+  await app.page.locator(".prompt button.primary").click();
+  await app.page.waitForSelector(".prompt", { state: "detached", timeout: 8000 });
+  await app.page.waitForFunction(
+    () => (document.body.textContent ?? "").includes("terraform applied cleanly"),
+    undefined,
+    { timeout: 10000 },
+  );
+  assert.deepEqual(app.errors, []);
+});
+
+test("denying a prompt from the keyboard refuses the tool", async (t) => {
+  const h = await stage();
+  t.after(() => h.cleanup());
+  await h.post("/api/bots", { name: "Sre" });
+  const app = await openApp(browser, h.url);
+  t.after(() => app.close());
+  await app.page.waitForSelector(".dot.open");
+
+  h.setScript(async (input) => {
+    const decision = await input.canUseTool?.("Bash", { command: "terraform destroy" }, { signal: input.signal });
+    return {
+      text: decision?.behavior === "deny" ? "refused to destroy anything" : "destroyed it",
+      toolCalls: [],
+      usage: usage(10, 10),
+      costUsd: 0,
+      sessionId: null,
+      isError: false,
+      detail: null,
+    };
+  });
+
+  await app.page.locator("textarea").fill("destroy it");
+  await app.page.locator("textarea").press("Enter");
+  await app.page.waitForSelector(".prompt", { timeout: 8000 });
+  await app.page.keyboard.press("d");
+  await app.page.waitForSelector(".prompt", { state: "detached", timeout: 8000 });
+  await app.page.waitForFunction(
+    () => (document.body.textContent ?? "").includes("refused to destroy anything"),
+    undefined,
+    { timeout: 10000 },
+  );
+});
+
+test("the halt button stops a running turn and says so", async (t) => {
+  const h = await stage();
+  t.after(() => h.cleanup());
+  await h.post("/api/bots", { name: "Sre" });
+  const app = await openApp(browser, h.url);
+  t.after(() => app.close());
+  await app.page.waitForSelector(".dot.open");
+
+  h.setScript(async (input) => {
+    input.onText?.("starting a very long job");
+    await sleep(30_000, input.signal);
+    throw new Error("unreachable");
+  });
+
+  await app.page.locator("textarea").fill("do the slow thing");
+  await app.page.locator("textarea").press("Enter");
+  await app.page.waitForSelector(".cursor", { timeout: 8000 });
+
+  const halt = app.page.locator("button.halt").first();
+  await halt.waitFor({ state: "visible" });
+  await app.page.waitForFunction(
+    () => !(document.querySelector("button.halt") as HTMLButtonElement | null)?.disabled,
+    undefined,
+    { timeout: 8000 },
+  );
+  await halt.click();
+
+  await app.page.waitForSelector(".notice.alert", { timeout: 8000 });
+  assert.match((await app.page.locator(".notice.alert").first().textContent()) ?? "", /Halted/);
+  assert.equal(await app.page.locator(".cursor").count(), 0, "streaming must stop");
+});
+
+test("a bot can be configured in the browser and the change reaches the next turn", async (t) => {
+  const h = await stage();
+  t.after(() => h.cleanup());
+  await h.post("/api/bots", { name: "Sre" });
+  const app = await openApp(browser, h.url);
+  t.after(() => app.close());
+  await app.page.waitForSelector(".dot.open");
+
+  await app.page.locator("button:has-text('Configure')").click();
+  await app.page.waitForSelector("#personality");
+  await app.page.locator("#personality").fill("You only ever reply in haiku.");
+  await app.page.locator("#model").selectOption("claude-opus-5");
+  await app.page.locator("button:has-text('Save')").click();
+  await app.page.waitForSelector("#personality", { state: "detached", timeout: 8000 });
+
+  await app.page.waitForFunction(
+    () => (document.querySelector(".bot .sub")?.textContent ?? "").includes("opus-5"),
+    undefined,
+    { timeout: 8000 },
+  );
+
+  let seenPrompt = "";
+  let seenModel = "";
+  h.setScript(async (input) => {
+    seenPrompt = input.systemPrompt;
+    seenModel = input.model;
+    return {
+      text: "old pond, a frog leaps",
+      toolCalls: [],
+      usage: usage(1, 1),
+      costUsd: 0,
+      sessionId: null,
+      isError: false,
+      detail: null,
+    };
+  });
+
+  await app.page.locator("textarea").fill("hello");
+  await app.page.locator("textarea").press("Enter");
+  await app.page.waitForFunction(
+    () => (document.body.textContent ?? "").includes("old pond"),
+    undefined,
+    { timeout: 10000 },
+  );
+  assert.match(seenPrompt, /You only ever reply in haiku\./);
+  assert.equal(seenModel, "claude-opus-5");
+});
+
+test("a reload brings the whole conversation back", async (t) => {
+  const h = await stage();
+  t.after(() => h.cleanup());
+  await h.post("/api/bots", { name: "Sre" });
+  const app = await openApp(browser, h.url);
+  t.after(() => app.close());
+  await app.page.waitForSelector(".dot.open");
+
+  h.setScript(replies("the answer is prod-eu"));
+  await app.page.locator("textarea").fill("which cluster");
+  await app.page.locator("textarea").press("Enter");
+  await app.page.waitForFunction(
+    () => (document.body.textContent ?? "").includes("prod-eu"),
+    undefined,
+    { timeout: 10000 },
+  );
+
+  await app.page.reload({ waitUntil: "domcontentloaded" });
+  await app.page.waitForSelector(".msg.bot", { timeout: 8000 });
+  assert.equal(await app.page.locator(".msg").count(), 2);
+  assert.match((await app.page.locator(".msg.bot .body").textContent()) ?? "", /prod-eu/);
+});
+
+test("two browsers watching the same room both see the reply", async (t) => {
+  const h = await stage();
+  t.after(() => h.cleanup());
+  await h.post("/api/bots", { name: "Sre" });
+  const one = await openApp(browser, h.url);
+  const two = await openApp(browser, h.url);
+  t.after(async () => {
+    await one.close();
+    await two.close();
+  });
+  await one.page.waitForSelector(".dot.open");
+  await two.page.waitForSelector(".dot.open");
+
+  h.setScript(replies("broadcast to everyone"));
+  await one.page.locator("textarea").fill("tell us all");
+  await one.page.locator("textarea").press("Enter");
+
+  for (const session of [one, two]) {
+    await session.page.waitForFunction(
+      () => (document.body.textContent ?? "").includes("broadcast to everyone"),
+      undefined,
+      { timeout: 10000 },
+    );
+  }
+});
+
+test("the daily ceiling surfaces as an error rather than a silent failure", async (t) => {
+  const h = await startHowdy({ webDist: WEB_DIST, dailyTokenCeiling: 100 });
+  t.after(() => h.cleanup());
+  await h.post("/api/bots", { name: "Sre" });
+  const app = await openApp(browser, h.url);
+  t.after(() => app.close());
+  await app.page.waitForSelector(".dot.open");
+
+  h.setScript(replies("first"));
+  await app.page.locator("textarea").fill("one");
+  await app.page.locator("textarea").press("Enter");
+  await app.page.waitForFunction(
+    () => (document.body.textContent ?? "").includes("first"),
+    undefined,
+    { timeout: 10000 },
+  );
+
+  await app.page.locator("textarea").fill("two");
+  await app.page.locator("textarea").press("Enter");
+  await app.page.waitForSelector(".notice.alert", { timeout: 8000 });
+  assert.match(
+    (await app.page.locator(".notice.alert").first().textContent()) ?? "",
+    /daily token ceiling/,
+  );
+});
+
+test("the phone layout keeps everything reachable", async (t) => {
+  const h = await stage();
+  t.after(() => h.cleanup());
+  await h.post("/api/bots", { name: "Sre" });
+  const app = await openApp(browser, h.url);
+  t.after(() => app.close());
+  await app.page.setViewportSize({ width: 390, height: 780 });
+  await app.page.waitForSelector(".dot.open");
+
+  assert.equal(await app.page.locator("textarea").isVisible(), true);
+  assert.equal(await app.page.locator(".bot").first().isVisible(), true);
+  assert.equal(await app.page.locator("button.halt").isVisible(), true);
+  assert.equal(
+    await app.page.locator(".dot").isVisible(),
+    true,
+    "connection state must stay visible on a phone",
+  );
+
+  const overflows = await app.page.evaluate(
+    () => document.documentElement.scrollWidth > window.innerWidth + 1,
+  );
+  assert.equal(overflows, false, "the phone layout must not scroll sideways");
+});

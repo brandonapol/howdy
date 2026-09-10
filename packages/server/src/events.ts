@@ -12,7 +12,8 @@ export type HowdyEvent =
   | { readonly kind: "queueDepth"; readonly depth: number }
   | { readonly kind: "spend"; readonly tokensToday: number; readonly ceiling: number }
   | { readonly kind: "permissionRequest"; readonly id: string; readonly roomId: string; readonly botId: string; readonly tool: string; readonly detail: string }
-  | { readonly kind: "permissionResolved"; readonly id: string; readonly allowed: boolean };
+  | { readonly kind: "permissionResolved"; readonly id: string; readonly allowed: boolean }
+  | { readonly kind: "shutdown" };
 
 export type Envelope = { readonly id: number; readonly event: HowdyEvent };
 

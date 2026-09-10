@@ -14,11 +14,11 @@ LAN-only. Runs on an ODROID.
 | M0 Foundations | pure core, scheduler, budgets, detectors — **done** |
 | M1 One bot, one room | server, DB, SSE, agent runner, queue, **UI — done** |
 | M2 Identity & memory | bot dirs, `personality.md` and the config UI shipped early; `remember` tool next |
-| M3 Tools & permissions | planned |
+| M3 Tools & permissions | bash analyser, permission gate, approval UI — **done**; `gh` setup documented |
 | M4 The party | planned |
 | M5 Ship it | planned |
 
-**103 tests green.** See [`docs/RESEARCH.md`](docs/RESEARCH.md) for how this
+**246 tests green**, including 18 API end-to-end and 11 browser end-to-end. See [`docs/RESEARCH.md`](docs/RESEARCH.md) for how this
 compares to Grok Bot and what the multi-agent literature says.
 
 Read [`docs/PLAN.md`](docs/PLAN.md) for the architecture and
@@ -42,7 +42,8 @@ each other forever — can be tested without spending a token.
 ```bash
 npm install
 npm run typecheck
-npm test
+npm test          # unit + API end-to-end
+npm run test:e2e  # browser end-to-end (needs: npx playwright install chromium)
 
 npm run build
 
@@ -62,6 +63,21 @@ Node 22+. No native dependencies in `core`, on purpose.
 | `HOWDY_SECRET` | unset | if set, required as `x-howdy-secret` on every `/api` call bar health |
 | `HOWDY_TURN_TIMEOUT_MS` | `180000` | per-turn watchdog |
 | `HOWDY_DAILY_TOKEN_CEILING` | `2000000` | refuses new turns once spent |
+
+## Testing
+
+Three layers, all runnable offline — no API key, no tokens spent.
+
+| Layer | Where | What it proves |
+| --- | --- | --- |
+| Unit | `packages/*/test/*.test.ts` | Pure logic: the scheduler, budgets, degeneracy detectors, the bash analyser (a 74-command fixture table), path containment, the UI reducer. |
+| API end-to-end | `packages/server/test/e2e.test.ts` | A real HTTP server on a real port with real SSE and a real SQLite file. Full turn lifecycle, halt, watchdog, permission round-trips, the daily ceiling, queue serialisation, reconnect replay, restart persistence. |
+| Browser end-to-end | `packages/web/test/ui.e2e.test.ts` | Real Chromium against the real server and the built bundle. Streaming, permission prompts by mouse and keyboard, halt, bot configuration reaching the next turn, reload, two clients at once, phone layout. |
+
+The agent itself is injected (`startServer({ runTurn })`), so end-to-end tests
+drive a scripted fake through the genuine code path — same queue, same gate,
+same persistence — without calling Claude. If Chromium lives somewhere unusual,
+set `HOWDY_CHROMIUM`.
 
 ## The safety rails
 

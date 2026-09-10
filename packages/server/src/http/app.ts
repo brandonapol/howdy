@@ -9,7 +9,13 @@ import { recordSpend, searchMessages, spendToday } from "../db/index.js";
 import type { EventBus } from "../events.js";
 import type { BotStore } from "../bots/store.js";
 import type { TurnQueue } from "../orchestrator/queue.js";
-import { runTurn } from "../agent/run.js";
+import { runTurn as defaultRunTurn } from "../agent/run.js";
+import type { RunTurnInput } from "../agent/run.js";
+import type { TurnOutcome } from "../agent/outcome.js";
+import { createPermissionBroker } from "../agent/permissions.js";
+import type { PermissionBroker } from "../agent/permissions.js";
+
+export type RunTurn = (input: RunTurnInput) => Promise<TurnOutcome>;
 
 export type AppDeps = {
   readonly config: Config;
@@ -17,6 +23,8 @@ export type AppDeps = {
   readonly bus: EventBus;
   readonly bots: BotStore;
   readonly queue: TurnQueue;
+  readonly runTurn?: RunTurn;
+  readonly broker?: PermissionBroker;
 };
 
 type MessageRow = {
@@ -69,6 +77,9 @@ const listMessages = (db: Db, roomId: string, limit = 200): readonly MessageRow[
 
 export const createApp = (deps: AppDeps): Hono => {
   const { config, db, bus, bots, queue } = deps;
+  const runTurn = deps.runTurn ?? defaultRunTurn;
+  const broker =
+    deps.broker ?? createPermissionBroker(db, bus, config.permissionTimeoutMs);
   const app = new Hono();
 
   app.use("/api/*", async (c, next) => {
@@ -95,6 +106,10 @@ export const createApp = (deps: AppDeps): Hono => {
       const pending: string[] = [];
 
       const off = bus.subscribe((envelope) => {
+        if (envelope.event.kind === "shutdown") {
+          open = false;
+          return;
+        }
         pending.push(JSON.stringify(envelope));
       }, Number.isFinite(lastId) ? lastId : 0);
 
@@ -106,8 +121,12 @@ export const createApp = (deps: AppDeps): Hono => {
       while (open) {
         const next = pending.shift();
         if (next === undefined) {
-          await stream.writeSSE({ event: "ping", data: "" });
-          await stream.sleep(1000);
+          try {
+            await stream.writeSSE({ event: "ping", data: "" });
+          } catch {
+            break;
+          }
+          await stream.sleep(250);
           continue;
         }
         const envelope = JSON.parse(next) as { id: number };
@@ -224,6 +243,7 @@ export const createApp = (deps: AppDeps): Hono => {
             allowedTools: ["Bash", "Read", "Write", "Edit", "Glob", "Grep"],
             maxTurns: 12,
             signal,
+            canUseTool: broker.gateFor(bot, roomId),
             onText: (chunk) =>
               bus.publish({ kind: "chunk", roomId, botId: String(bot.id), text: chunk }),
             onToolUse: (tool) =>
@@ -263,14 +283,33 @@ export const createApp = (deps: AppDeps): Hono => {
     return c.json({ ok: true, message: human }, 202);
   });
 
+  app.get("/api/permissions", (c) => c.json(broker.pending()));
+
+  app.post("/api/permissions/:id", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      allowed?: boolean;
+      always?: boolean;
+    };
+    const settled = broker.decide(
+      c.req.param("id"),
+      body.allowed === true,
+      body.always === true,
+    );
+    return settled
+      ? c.json({ ok: true })
+      : c.json({ error: "no such pending request" }, 404);
+  });
+
   app.post("/api/rooms/:id/halt", (c) => {
     const roomId = c.req.param("id");
+    broker.cancelAll();
     const stopped = queue.abortAll();
     bus.publish({ kind: "halted", roomId, reason: { kind: "manual" } });
     return c.json({ ok: true, stopped });
   });
 
   app.post("/api/panic", (c) => {
+    broker.cancelAll();
     const stopped = queue.abortAll();
     bus.publish({ kind: "announce", roomId: "*", text: "Panic: everything halted." });
     return c.json({ ok: true, stopped });

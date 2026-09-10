@@ -55,6 +55,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ text, botId }),
     }),
+  decidePermission: (id: string, allowed: boolean, always: boolean) =>
+    request<{ ok: boolean }>(`/api/permissions/${id}`, {
+      method: "POST",
+      body: JSON.stringify({ allowed, always }),
+    }),
   halt: (roomId: string) =>
     request<{ stopped: number }>(`/api/rooms/${roomId}/halt`, { method: "POST" }),
   panic: () => request<{ stopped: number }>("/api/panic", { method: "POST" }),

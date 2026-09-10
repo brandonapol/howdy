@@ -7,6 +7,7 @@ import { BotSidebar } from "./components/BotSidebar.js";
 import { Transcript } from "./components/Transcript.js";
 import { Composer } from "./components/Composer.js";
 import { BotEditor } from "./components/BotEditor.js";
+import { PermissionPrompt } from "./components/PermissionPrompt.js";
 import { Meter } from "./components/Meter.js";
 
 const ROOM = "general";
@@ -71,6 +72,7 @@ export const App = () => {
   }, []);
 
   const room = state.rooms[ROOM] ?? emptyRoom;
+  const pendingPermission = state.permissions[0] ?? null;
   const busy = room.activeBot !== null || state.queueDepth > 0;
   const current = bots.find((b) => b.id === selected) ?? null;
 
@@ -81,8 +83,21 @@ export const App = () => {
     });
   };
 
+  const decide = useCallback((id: string, allowed: boolean, always: boolean) => {
+    patch((s) => ({ ...s, permissions: s.permissions.filter((p) => p.id !== id) }));
+    api.decidePermission(id, allowed, always).catch(() => undefined);
+  }, [patch]);
+
   return (
     <div className="app">
+      {pendingPermission !== null && (
+        <PermissionPrompt
+          request={pendingPermission}
+          queued={state.permissions.length}
+          bots={bots}
+          onDecide={decide}
+        />
+      )}
       <BotSidebar
         bots={bots}
         selected={selected}

@@ -14,12 +14,21 @@ export type RoomView = {
   readonly tools: readonly string[];
 };
 
+export type PermissionRequest = {
+  readonly id: string;
+  readonly roomId: string;
+  readonly botId: string;
+  readonly tool: string;
+  readonly detail: string;
+};
+
 export type UiState = {
   readonly rooms: Readonly<Record<string, RoomView>>;
   readonly queueDepth: number;
   readonly tokensToday: number;
   readonly tokenCeiling: number;
   readonly notices: readonly Notice[];
+  readonly permissions: readonly PermissionRequest[];
   readonly lastEventId: number;
 };
 
@@ -36,6 +45,7 @@ export const initialState: UiState = {
   tokensToday: 0,
   tokenCeiling: 0,
   notices: [],
+  permissions: [],
   lastEventId: 0,
 };
 
@@ -116,11 +126,11 @@ export const applyEvent = (state: UiState, event: HowdyEvent): UiState => {
 
     case "halted": {
       const room = roomOf(state, event.roomId);
-      const halted = withRoom(state, event.roomId, {
-        ...room,
-        activeBot: null,
-        streaming: {},
-      });
+      const halted = withRoom(
+        { ...state, permissions: state.permissions.filter((p) => p.roomId !== event.roomId) },
+        event.roomId,
+        { ...room, activeBot: null, streaming: {} },
+      );
       return addNotice(halted, {
         id: `halt-${state.lastEventId}`,
         roomId: event.roomId,
@@ -136,6 +146,29 @@ export const applyEvent = (state: UiState, event: HowdyEvent): UiState => {
         text: event.text,
         tone: "info",
       });
+
+    case "permissionRequest":
+      return state.permissions.some((p) => p.id === event.id)
+        ? state
+        : {
+            ...state,
+            permissions: [
+              ...state.permissions,
+              {
+                id: event.id,
+                roomId: event.roomId,
+                botId: event.botId,
+                tool: event.tool,
+                detail: event.detail,
+              },
+            ],
+          };
+
+    case "permissionResolved":
+      return {
+        ...state,
+        permissions: state.permissions.filter((p) => p.id !== event.id),
+      };
 
     case "queueDepth":
       return { ...state, queueDepth: event.depth };

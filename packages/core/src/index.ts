@@ -4,3 +4,5 @@ export * from "./budget.js";
 export * from "./degeneracy.js";
 export * from "./scheduler.js";
 export * from "./prompt.js";
+export * from "./bash.js";
+export * from "./paths.js";

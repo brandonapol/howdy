@@ -8,7 +8,7 @@
     "build": "tsc --build",
     "dev": "node --watch --experimental-strip-types src/main.ts",
     "start": "node dist/main.js",
-    "test": "tsc --build && node --test --experimental-strip-types test/*.test.ts",
+    "test": "tsc --build && node --test --test-timeout=30000 --experimental-strip-types test/*.test.ts",
     "typecheck": "tsc --build"
   },
   "dependencies": {

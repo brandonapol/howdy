@@ -125,6 +125,48 @@ test("notices are capped so a chatty party cannot grow the list forever", () => 
   assert.match(s.notices.at(-1)?.text ?? "", /note 19/);
 });
 
+test("a permission request is queued and clears when resolved", () => {
+  let s = initialState;
+  s = applyEvent(s, {
+    kind: "permissionRequest",
+    id: "p1", roomId: "general", botId: "b1", tool: "Bash", detail: "terraform apply",
+  });
+  assert.equal(s.permissions.length, 1);
+  assert.equal(s.permissions[0]?.detail, "terraform apply");
+  s = applyEvent(s, { kind: "permissionResolved", id: "p1", allowed: true });
+  assert.equal(s.permissions.length, 0);
+});
+
+test("a replayed permission request does not queue twice", () => {
+  const event = {
+    kind: "permissionRequest" as const,
+    id: "p1", roomId: "general", botId: "b1", tool: "Bash", detail: "terraform apply",
+  };
+  const s = applyEvent(applyEvent(initialState, event), event);
+  assert.equal(s.permissions.length, 1);
+});
+
+test("several prompts queue in arrival order", () => {
+  let s = initialState;
+  for (const id of ["p1", "p2", "p3"]) {
+    s = applyEvent(s, {
+      kind: "permissionRequest",
+      id, roomId: "general", botId: "b1", tool: "Bash", detail: id,
+    });
+  }
+  assert.deepEqual(s.permissions.map((p) => p.id), ["p1", "p2", "p3"]);
+  s = applyEvent(s, { kind: "permissionResolved", id: "p2", allowed: false });
+  assert.deepEqual(s.permissions.map((p) => p.id), ["p1", "p3"]);
+});
+
+test("halting a room clears its pending prompts but not another room's", () => {
+  let s = initialState;
+  s = applyEvent(s, { kind: "permissionRequest", id: "p1", roomId: "general", botId: "b1", tool: "Bash", detail: "x" });
+  s = applyEvent(s, { kind: "permissionRequest", id: "p2", roomId: "other", botId: "b1", tool: "Bash", detail: "y" });
+  s = applyEvent(s, { kind: "halted", roomId: "general", reason: { kind: "manual" } });
+  assert.deepEqual(s.permissions.map((p) => p.id), ["p2"]);
+});
+
 test("spend and queue depth flow into the meters", () => {
   let s = initialState;
   s = applyEvent(s, { kind: "spend", tokensToday: 1234, ceiling: 5000 });

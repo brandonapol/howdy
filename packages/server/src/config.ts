@@ -20,6 +20,7 @@ export type Config = {
   readonly port: number;
   readonly sharedSecret: string | null;
   readonly turnTimeoutMs: number;
+  readonly permissionTimeoutMs: number;
   readonly dailyTokenCeiling: number;
   readonly webDist: string | null;
 };
@@ -37,6 +38,7 @@ export const loadConfig = (): Config => {
     port: int("HOWDY_PORT", 4747),
     sharedSecret: secret === undefined || secret === "" ? null : secret,
     turnTimeoutMs: int("HOWDY_TURN_TIMEOUT_MS", 180_000),
+    permissionTimeoutMs: int("HOWDY_PERMISSION_TIMEOUT_MS", 120_000),
     dailyTokenCeiling: int("HOWDY_DAILY_TOKEN_CEILING", 2_000_000),
     webDist: webDist === undefined || webDist === "" ? null : resolve(webDist),
   };

@@ -7,8 +7,9 @@
     "dev": "vite",
     "build": "tsc --build && vite build",
     "preview": "vite preview",
-    "test": "tsc --build && node --test --experimental-strip-types test/*.test.ts",
-    "typecheck": "tsc --build"
+    "test": "tsc --build && node --test --experimental-strip-types test/state.test.ts",
+    "typecheck": "tsc --build",
+    "test:e2e": "npm run build && node --test --test-timeout=60000 --experimental-strip-types test/ui.e2e.test.ts"
   },
   "dependencies": {
     "@howdy/core": "*",
@@ -19,6 +20,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "playwright": "^1.63.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.0"
   }

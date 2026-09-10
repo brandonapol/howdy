@@ -166,7 +166,7 @@ deps: H-11, H-12
 
 ## M3 — Tools & permissions
 
-### H-16 · Bash command parser + allowlist — `todo`
+### H-16 · Bash command parser + allowlist — `done`
 `packages/core/src/bash.ts`. Pure. Splits on pipes, `&&`, `||`, `;`, command
 substitution; extracts each invoked binary; classifies against allow/deny lists.
 Denylist covers `rm -rf /`, `curl|sh`, `dd`, `mkfs`, fork bombs, and history
@@ -176,7 +176,7 @@ rewrites on shared branches.
 the nasty nested-substitution cases.
 deps: H-2
 
-### H-17 · Permission gate — `todo`
+### H-17 · Permission gate — `done`
 `packages/server/src/agent/permissions.ts`. `canUseTool` implementation:
 allowlist for Bash, workspace containment (with symlink resolution) for file
 tools, SSE prompt for everything else, 120s timeout defaulting to deny,
@@ -186,14 +186,14 @@ tools, SSE prompt for everything else, 120s timeout defaulting to deny,
 unattended unknown tool denies on timeout rather than hanging.
 deps: H-9, H-16
 
-### H-18 · Permission prompt UI — `todo`
+### H-18 · Permission prompt UI — `done`
 Modal showing the bot, the tool, the exact command, and approve / deny / always.
 Keyboard-driven. Queues if several arrive.
 
 **Done when:** you can approve a `gh` call from your phone on the LAN.
 deps: H-11, H-17
 
-### H-19 · GitHub CLI enablement — `todo`
+### H-19 · GitHub CLI enablement — `docs done` (ops/GITHUB.md); needs a real ODROID to verify
 Document and script `gh auth login` on the ODROID under the service account,
 confirm the bots inherit the token, add a `gh`-shaped smoke test.
 
